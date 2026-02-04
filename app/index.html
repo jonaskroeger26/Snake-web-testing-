@@ -157,9 +157,10 @@
         }
         .pause-btn:hover { background: #14F195; color: #000; }
         .game-canvas-wrap {
-            max-width: 90vmin;
-            max-height: 90vmin;
-            width: 100%;
+            width: min(90vmin, 90vmin);
+            height: min(90vmin, 90vmin);
+            max-width: min(90vw, 90vh);
+            max-height: min(90vw, 90vh);
             aspect-ratio: 1;
             display: flex;
             align-items: center;
@@ -529,11 +530,7 @@
         const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
 
         const GRID_SIZE = 20;
-        const CELL_SIZE = (() => {
-            if (typeof window === 'undefined') return 20;
-            const side = Math.min(window.innerWidth, window.innerHeight);
-            return Math.min(24, Math.max(14, Math.floor(side / 22)));
-        })();
+        const CELL_SIZE = 16;
         const INITIAL_SNAKE = [{x: 10, y: 10}];
         const INITIAL_DIRECTION = {x: 1, y: 0};
 
@@ -593,8 +590,22 @@
             const canvasRef = useRef(null);
             const gameLoopRef = useRef(null);
             const directionRef = useRef(INITIAL_DIRECTION);
+            const [gameScale, setGameScale] = useState(1);
 
             const GAME_SPEEDS = { easy: 200, medium: 150, hard: 100 };
+
+            useEffect(() => {
+                const updateScale = () => {
+                    const w = window.innerWidth;
+                    const h = window.innerHeight;
+                    const refSize = 420;
+                    const s = Math.min(1, w / refSize, h / refSize);
+                    setGameScale(s);
+                };
+                updateScale();
+                window.addEventListener('resize', updateScale);
+                return () => window.removeEventListener('resize', updateScale);
+            }, []);
 
             // Load leaderboard from Supabase
             const loadLeaderboard = async () => {
@@ -1250,7 +1261,7 @@
 
             return (
                 <div className="fullscreen">
-                    <div className="game-screen">
+                    <div className="game-screen" style={{ transform: `scale(${gameScale})`, transformOrigin: 'center center' }}>
                         <div className="game-hud">
                             <div className="hud-left">
                                 <div className="stat-pill">
