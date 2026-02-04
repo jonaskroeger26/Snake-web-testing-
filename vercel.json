@@ -2,5 +2,14 @@
   "buildCommand": "npm run build:mwa",
   "installCommand": "npm install",
   "framework": null,
-  "outputDirectory": "app"
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/index (24).html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/$1"
+    }
+  ]
 }
