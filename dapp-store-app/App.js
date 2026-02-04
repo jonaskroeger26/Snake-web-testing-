@@ -227,6 +227,35 @@ export default function App() {
         injectedJavaScript={TEST_WEBVIEW_WITH_HTML ? '' : injectedJavaScript}
         injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
         onMessage={handleMessage}
+        onError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          console.error('[WebView] ❌ Error loading page:', {
+            code: nativeEvent.code,
+            description: nativeEvent.description,
+            domain: nativeEvent.domain,
+            url: nativeEvent.url || PWA_URL
+          });
+        }}
+        onHttpError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          console.error('[WebView] ❌ HTTP Error:', {
+            statusCode: nativeEvent.statusCode,
+            url: nativeEvent.url,
+            description: nativeEvent.description
+          });
+          // Show user-friendly error
+          if (nativeEvent.statusCode === 404) {
+            webViewRef.current?.injectJavaScript(`
+              document.body.innerHTML = '<div style="padding:20px;text-align:center;color:#fff;background:#000;min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;"><h1>404 - Page Not Found</h1><p>The app could not load. Please check your internet connection.</p><p style="color:#666;font-size:12px;">URL: ${nativeEvent.url || PWA_URL}</p></div>';
+            `);
+          }
+        }}
+        onLoadStart={() => console.log('[WebView] Load started')}
+        onLoadEnd={() => console.log('[WebView] Load finished')}
+        onLoad={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          console.log('[WebView] Loaded:', nativeEvent.url);
+        }}
         setSupportMultipleWindows={false}
         scrollEnabled={true}
         overScrollMode="never"
