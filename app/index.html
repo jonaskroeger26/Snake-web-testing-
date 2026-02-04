@@ -675,23 +675,29 @@
                             .map((entry, idx) => ({
                                 rank: idx + 1,
                                 name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                                score: entry.score >= 100 ? entry.score : entry.score * 10, // Fix old scores
+                                score: entry.score, // Score is already foodEaten * 10 when submitted
                                 wallet: entry.wallet_address
                             }));
 
                         setLeaderboard(formatted);
                     } else {
-                        const formatted = data.map((entry, idx) => ({
-                            rank: idx + 1,
-                            name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                            score: entry.best_score >= 100 ? entry.best_score : entry.best_score * 10, // Fix old scores
-                            wallet: entry.wallet_address
-                        }));
+                        // RPC returns best_score already calculated
+                        const formatted = data
+                            .sort((a, b) => b.best_score - a.best_score)
+                            .slice(0, 100)
+                            .map((entry, idx) => ({
+                                rank: idx + 1,
+                                name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
+                                score: entry.best_score, // Use score as-is (already multiplied by 10 when submitted)
+                                wallet: entry.wallet_address
+                            }));
 
                         setLeaderboard(formatted);
                     }
                 } catch (err) {
                     console.error('Failed to load leaderboard:', err);
+                    // Show empty leaderboard on error
+                    setLeaderboard([]);
                 } finally {
                     setLoadingLeaderboard(false);
                 }
@@ -931,14 +937,25 @@
                             difficulty: settings.difficulty
                         });
 
-                    if (error) throw error;
+                    if (error) {
+                        console.error('Supabase insert error:', error);
+                        throw error;
+                    }
 
-                    console.log('Score submitted successfully!');
+                    console.log('✅ Score submitted successfully!', {
+                        wallet: wallet.slice(0, 8) + '...',
+                        score: finalScore,
+                        mode: settings.gameMode,
+                        difficulty: settings.difficulty
+                    });
                     
-                    // Reload leaderboard
-                    await loadLeaderboard();
+                    // Reload leaderboard after a short delay to ensure DB write completes
+                    setTimeout(async () => {
+                        await loadLeaderboard();
+                    }, 500);
                 } catch (err) {
-                    console.error('Failed to submit score:', err);
+                    console.error('❌ Failed to submit score:', err);
+                    alert('Failed to submit score: ' + (err.message || String(err)));
                 } finally {
                     setSubmittingScore(false);
                 }
