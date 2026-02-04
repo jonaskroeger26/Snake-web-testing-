@@ -1,0 +1,21 @@
+node_modules/
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+*.tsbuildinfo
+web-build/
+dapp-store-build/
+dapp-store-signing-keys/
+
+# EAS
+.easignore
+
+# Env
+.env
+.env.local
+.env.*.local
