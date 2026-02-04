@@ -1,18 +1,35 @@
 {
   "buildCommand": "npm run build:mwa",
+  "public": false,
   "rewrites": [
     {
       "source": "/",
-      "destination": "/index (24).html"
+      "destination": "/app/index (24).html"
+    },
+    {
+      "source": "/manifest.json",
+      "destination": "/app/manifest.json"
+    },
+    {
+      "source": "/sw.js",
+      "destination": "/app/sw.js"
+    },
+    {
+      "source": "/mwa-bundle.js",
+      "destination": "/app/mwa-bundle.js"
+    },
+    {
+      "source": "/icons/(.*)",
+      "destination": "/app/icons/$1"
     },
     {
       "source": "/(.*)",
-      "destination": "/$1"
+      "destination": "/app/$1"
     }
   ],
   "headers": [
     {
-      "source": "/manifest.json",
+      "source": "/app/manifest.json",
       "headers": [
         {
           "key": "Content-Type",
@@ -21,7 +38,7 @@
       ]
     },
     {
-      "source": "/sw.js",
+      "source": "/app/sw.js",
       "headers": [
         {
           "key": "Content-Type",
