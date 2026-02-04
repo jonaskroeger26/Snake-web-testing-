@@ -381,7 +381,9 @@
             const [foodEaten, setFoodEaten] = useState(0);
             const [highScore, setHighScore] = useState(() => {
                 const saved = localStorage.getItem('snakeHighScore');
-                return saved ? parseInt(saved) : 0;
+                if (!saved) return 0;
+                const n = parseInt(saved, 10);
+                return n >= 10 ? Math.round(n / 10) : n;
             });
             const [obstacles, setObstacles] = useState([]);
             const [speedBoost, setSpeedBoost] = useState(false);
@@ -444,7 +446,7 @@
                             .map((entry, idx) => ({
                                 rank: idx + 1,
                                 name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                                score: entry.score >= 100 ? entry.score : entry.score * 10, // Fix old scores
+                                score: entry.score >= 10 ? Math.round(entry.score / 10) : entry.score,
                                 wallet: entry.wallet_address
                             }));
 
@@ -453,7 +455,7 @@
                         const formatted = data.map((entry, idx) => ({
                             rank: idx + 1,
                             name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                            score: entry.best_score >= 100 ? entry.best_score : entry.best_score * 10, // Fix old scores
+                            score: entry.best_score >= 10 ? Math.round(entry.best_score / 10) : entry.best_score,
                             wallet: entry.wallet_address
                         }));
 
@@ -574,28 +576,23 @@
             };
 
             const submitScore = async (finalFoodCount) => {
-                const finalScore = finalFoodCount * 10; // Convert food to score
-                
-                // Update high score
-                if (finalScore > highScore) {
-                    setHighScore(finalScore);
-                    localStorage.setItem('snakeHighScore', finalScore.toString());
+                const apples = finalFoodCount;
+                if (apples > highScore) {
+                    setHighScore(apples);
+                    localStorage.setItem('snakeHighScore', String(apples));
                 }
-                
-                if (finalScore === 0 || !wallet) {
+                if (apples === 0 || !wallet) {
                     console.log('No score to submit or no wallet connected');
                     return;
                 }
-
                 setSubmittingScore(true);
-                
                 try {
                     const { error } = await supabase
                         .from('leaderboards')
                         .insert({
                             wallet_address: wallet,
                             skr_name: snsName,
-                            score: finalScore,
+                            score: apples,
                             game_mode: settings.gameMode,
                             difficulty: settings.difficulty
                         });
@@ -947,7 +944,7 @@
                             <div className="hud-left">
                                 <div className="stat-pill">
                                     <span className="label">SCORE</span>
-                                    {foodEaten * 10}
+                                    {foodEaten}
                                 </div>
                                 <div className="stat-pill">
                                     <span className="label">HIGH SCORE</span>
@@ -992,7 +989,7 @@
                                 <div className="overlay-title">GAME OVER</div>
                                 <div className="overlay-score">
                                     FINAL SCORE
-                                    <span>{foodEaten * 10}</span>
+                                    <span>{foodEaten}</span>
                                 </div>
                                 {submittingScore && (
                                     <div className="loading-message">

@@ -583,10 +583,43 @@
             const [direction, setDirection] = useState(INITIAL_DIRECTION);
             const [food, setFood] = useState({x: 15, y: 15});
             const [foodEaten, setFoodEaten] = useState(0);
-            const [highScore, setHighScore] = useState(() => {
-                const saved = localStorage.getItem('snakeHighScore');
-                return saved ? parseInt(saved) : 0;
+            // High score per (mode, difficulty) – different leaderboard and high score for each combination
+            const HIGH_SCORE_KEY = 'snakeHighScores';
+            const getHighScoreKey = (mode, difficulty) => `${mode}_${difficulty}`;
+            const [highScores, setHighScores] = useState(() => {
+                try {
+                    const raw = localStorage.getItem(HIGH_SCORE_KEY);
+                    if (raw) {
+                        const obj = JSON.parse(raw);
+                        if (obj && typeof obj === 'object') {
+                            const migrated = {};
+                            for (const k of Object.keys(obj)) {
+                                const v = Number(obj[k]);
+                                if (v >= 10) migrated[k] = Math.round(v / 10);
+                                else migrated[k] = v;
+                            }
+                            try { localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify(migrated)); } catch (_) {}
+                            return migrated;
+                        }
+                    }
+                    const legacy = localStorage.getItem('snakeHighScore');
+                    if (legacy) {
+                        const n = parseInt(legacy, 10);
+                        const val = n >= 10 ? Math.round(n / 10) : n;
+                        return { classic_medium: val };
+                    }
+                    return {};
+                } catch (_) { return {}; }
             });
+            const getHighScore = (mode, difficulty) => highScores[getHighScoreKey(mode, difficulty)] || 0;
+            const setHighScoreFor = (mode, difficulty, score) => {
+                const key = getHighScoreKey(mode, difficulty);
+                setHighScores(prev => {
+                    const next = { ...prev, [key]: Math.max(prev[key] || 0, score) };
+                    try { localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify(next)); } catch (_) {}
+                    return next;
+                });
+            };
             const [obstacles, setObstacles] = useState([]);
             const [speedBoost, setSpeedBoost] = useState(false);
             const [timer, setTimer] = useState(60);
@@ -611,6 +644,8 @@
             const canvasRef = useRef(null);
             const gameLoopRef = useRef(null);
             const directionRef = useRef(INITIAL_DIRECTION);
+            // Capture mode/difficulty at game start so submitted score is never stored under wrong mode
+            const gameSessionRef = useRef({ gameMode: 'classic', difficulty: 'medium' });
             const [gameScale, setGameScale] = useState(1);
 
             const GAME_SPEEDS = { easy: 200, medium: 150, hard: 100 };
@@ -637,6 +672,12 @@
                     window.removeEventListener('resize', updateScale);
                 };
             }, []);
+
+            // Display: 1 point per apple. Old DB rows may be stored ×10, so convert for display only.
+            const scoreToApples = (s) => {
+                const n = Number(s);
+                return n >= 10 ? Math.round(n / 10) : n;
+            };
 
             // Load leaderboard from Supabase
             const loadLeaderboard = async () => {
@@ -675,7 +716,7 @@
                             .map((entry, idx) => ({
                                 rank: idx + 1,
                                 name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                                score: entry.score, // Score is already foodEaten * 10 when submitted
+                                score: scoreToApples(entry.score),
                                 wallet: entry.wallet_address
                             }));
 
@@ -688,7 +729,7 @@
                             .map((entry, idx) => ({
                                 rank: idx + 1,
                                 name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                                score: entry.best_score, // Use score as-is (already multiplied by 10 when submitted)
+                                score: scoreToApples(entry.best_score),
                                 wallet: entry.wallet_address
                             }));
 
@@ -893,6 +934,11 @@
             };
 
             const startGame = () => {
+                // Lock in mode/difficulty for this round so leaderboard submission is always correct
+                gameSessionRef.current = {
+                    gameMode: settings.gameMode,
+                    difficulty: settings.difficulty
+                };
                 setSnake(INITIAL_SNAKE);
                 setDirection(INITIAL_DIRECTION);
                 directionRef.current = INITIAL_DIRECTION;
@@ -911,30 +957,29 @@
             };
 
             const submitScore = async (finalFoodCount) => {
-                const finalScore = finalFoodCount * 10; // Convert food to score
-                
-                // Update high score
-                if (finalScore > highScore) {
-                    setHighScore(finalScore);
-                    localStorage.setItem('snakeHighScore', finalScore.toString());
+                const apples = finalFoodCount;
+                const session = gameSessionRef.current;
+
+                if (apples > getHighScore(session.gameMode, session.difficulty)) {
+                    setHighScoreFor(session.gameMode, session.difficulty, apples);
                 }
-                
-                if (finalScore === 0 || !wallet) {
+
+                if (apples === 0 || !wallet) {
                     console.log('No score to submit or no wallet connected');
                     return;
                 }
 
                 setSubmittingScore(true);
-                
+
                 try {
                     const { error } = await supabase
                         .from('leaderboards')
                         .insert({
                             wallet_address: wallet,
                             skr_name: snsName,
-                            score: finalScore,
-                            game_mode: settings.gameMode,
-                            difficulty: settings.difficulty
+                            score: apples,
+                            game_mode: session.gameMode,
+                            difficulty: session.difficulty
                         });
 
                     if (error) {
@@ -944,12 +989,17 @@
 
                     console.log('✅ Score submitted successfully!', {
                         wallet: wallet.slice(0, 8) + '...',
-                        score: finalScore,
-                        mode: settings.gameMode,
-                        difficulty: settings.difficulty
+                        score: apples,
+                        mode: session.gameMode,
+                        difficulty: session.difficulty
                     });
                     
-                    // Reload leaderboard after a short delay to ensure DB write completes
+                    // Reload leaderboard for the mode/difficulty we just submitted to
+                    setLeaderboardFilter(prev => ({
+                        ...prev,
+                        mode: session.gameMode,
+                        difficulty: session.difficulty
+                    }));
                     setTimeout(async () => {
                         await loadLeaderboard();
                     }, 500);
@@ -1146,7 +1196,7 @@
                                 SETTINGS
                             </button>
                             <button className="menu-button secondary" onClick={() => setScreen('leaderboard')}>
-                                LEADERBOARD
+                                WORLD LEADERBOARD
                             </button>
                             {!wallet ? (
                                 <button className="menu-button secondary" onClick={openWalletModal}>
@@ -1280,11 +1330,13 @@
                 return (
                     <div className="fullscreen">
                         <div className="leaderboard-container">
-                            <div className="leaderboard-title">LEADERBOARD</div>
+                            <div className="leaderboard-title">WORLD LEADERBOARD</div>
                             <div className="leaderboard-subtitle">
                                 {leaderboardFilter.mode.toUpperCase()} • {leaderboardFilter.difficulty.toUpperCase()}
                             </div>
-                            
+                            <p style={{ fontSize: '0.85em', color: '#888', marginTop: 4 }}>
+                                Global rankings from Supabase. Each mode + difficulty has its own board.
+                            </p>
                             <div className="leaderboard-filters">
                                 <select 
                                     className="filter-select"
@@ -1309,7 +1361,7 @@
                                 </select>
                             </div>
                             
-                            <div className="leaderboard-list">
+                            <div key={`leaderboard-${leaderboardFilter.mode}-${leaderboardFilter.difficulty}`} className="leaderboard-list">
                                 {loadingLeaderboard ? (
                                     <div style={{textAlign: 'center', color: '#666', padding: '40px 20px'}}>
                                         Loading...
@@ -1343,13 +1395,13 @@
                     <div className="game-screen" style={{ transform: `scale(${gameScale})`, transformOrigin: 'center center' }}>
                         <div className="game-hud">
                             <div className="hud-left">
-                                <div className="stat-pill">
-                                    <span className="label">SCORE</span>
-                                    {foodEaten * 10}
+                                <div className="stat-pill" data-score-type="apples">
+                                    <span className="label">SCORE (1 per apple)</span>
+                                    <span>{Number(foodEaten)}</span>
                                 </div>
                                 <div className="stat-pill">
                                     <span className="label">HIGH SCORE</span>
-                                    {highScore}
+                                    {getHighScore(settings.gameMode, settings.difficulty)}
                                 </div>
                                 {settings.gameMode === 'survival' && (
                                     <div className="stat-pill">
@@ -1391,8 +1443,8 @@
                             <div className="overlay">
                                 <div className="overlay-title">GAME OVER</div>
                                 <div className="overlay-score">
-                                    FINAL SCORE
-                                    <span>{foodEaten * 10}</span>
+                                    FINAL SCORE (apples)
+                                    <span>{Number(foodEaten)}</span>
                                 </div>
                                 {submittingScore && (
                                     <div className="loading-message">
