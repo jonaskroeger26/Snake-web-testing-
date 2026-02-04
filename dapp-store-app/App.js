@@ -200,8 +200,12 @@ export default function App() {
   const webViewSource = TEST_WEBVIEW_WITH_HTML
     ? { html: '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body style="margin:0;background:#1a1a2e;color:#eee;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;font-size:24px">WebView OK</body></html>' }
     : {
-        uri: PWA_URL,
-        headers: Platform.OS === 'android' ? { 'Cache-Control': 'no-cache' } : undefined,
+        uri: PWA_URL + '?v=' + Date.now(),
+        headers: Platform.OS === 'android' ? { 
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        } : undefined,
       };
 
   const injectedJavaScriptBeforeContentLoaded = TEST_WEBVIEW_WITH_HTML ? '' : 'window.__SNAKE_IN_APP=true;';
