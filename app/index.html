@@ -598,7 +598,8 @@
                 const updateScale = () => {
                     const w = window.innerWidth || document.documentElement.clientWidth || 400;
                     const h = window.innerHeight || document.documentElement.clientHeight || 600;
-                    const refSize = 420;
+                    const isEmulator = /sdk_gphone|emulator|Android SDK built for|generic.*android/i.test(navigator.userAgent);
+                    const refSize = isEmulator ? 640 : 420;
                     const s = Math.max(0.4, Math.min(1, w / refSize, h / refSize));
                     setGameScale(s);
                 };
