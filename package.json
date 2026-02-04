@@ -9,7 +9,8 @@
     "test": "anchor test",
     "serve": "cd app && python3 -m http.server 8000",
     "keys": "anchor keys list",
-    "build:mwa": "node build-mwa.js"
+    "build:mwa": "node build-mwa.js",
+    "build:mwa-seeker": "node build-mwa-seeker.js"
   },
   "keywords": [
     "solana",
