@@ -372,6 +372,85 @@
             console.log('[SNS Lookup] Starting lookup for:', walletAddress);
             
             try {
+                // QuickNode SNS API support
+                // To use QuickNode, set your endpoint here (get it from quicknode.com dashboard)
+                // Example: 'https://your-endpoint.solana-mainnet.quiknode.pro/your-api-key/'
+                const QUICKNODE_ENDPOINT = null; // TODO: Add your QuickNode endpoint here
+                
+                // Try QuickNode SNS API if endpoint is configured
+                if (QUICKNODE_ENDPOINT && window.solanaWeb3) {
+                    try {
+                        console.log('[SNS Lookup] Trying QuickNode SNS API...');
+                        const connection = new window.solanaWeb3.Connection(QUICKNODE_ENDPOINT, 'confirmed');
+                        const walletPubkey = new window.solanaWeb3.PublicKey(walletAddress);
+                        
+                        // SNS Program ID - QuickNode supports this program
+                        const NAME_PROGRAM_ID = new window.solanaWeb3.PublicKey('namesLPneVptA9Z5rqUDD9tMTE1kg');
+                        
+                        // Get all name accounts owned by this wallet using QuickNode's enhanced RPC
+                        console.log('[SNS Lookup] Querying name accounts via QuickNode...');
+                        const nameAccounts = await connection.getProgramAccounts(NAME_PROGRAM_ID, {
+                            filters: [{
+                                memcmp: {
+                                    offset: 32, // Owner field offset
+                                    bytes: walletPubkey.toBytes()
+                                }
+                            }]
+                        });
+                        
+                        console.log('[SNS Lookup] QuickNode found', nameAccounts.length, 'name accounts');
+                        
+                        // Use QuickNode's sns_reverseLookup RPC method for each domain account
+                        for (const { pubkey } of nameAccounts) {
+                            try {
+                                const response = await fetch(QUICKNODE_ENDPOINT, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        jsonrpc: '2.0',
+                                        method: 'sns_reverseLookup',
+                                        params: [pubkey.toString()],
+                                        id: Date.now()
+                                    })
+                                });
+                                
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data.result && typeof data.result === 'string') {
+                                        const domainName = data.result;
+                                        console.log('[SNS Lookup] QuickNode reverseLookup result:', domainName);
+                                        
+                                        // QuickNode returns domain name (e.g., "bonfida" or "bonfida.sol")
+                                        // Check if it's a .skr domain
+                                        if (domainName.endsWith('.skr')) {
+                                            console.log('[SNS Lookup] ✅ Returning .skr domain from QuickNode:', domainName);
+                                            return domainName;
+                                        } else if (domainName.endsWith('.sol')) {
+                                            // Skip .sol domains, continue to next
+                                            console.log('[SNS Lookup] Found .sol domain, skipping:', domainName);
+                                            continue;
+                                        } else {
+                                            // If no TLD specified, we can't determine if it's .skr or .sol
+                                            // For now, skip it (or you could check against a .skr registry)
+                                            console.log('[SNS Lookup] Domain without TLD, skipping:', domainName);
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    console.log('[SNS Lookup] QuickNode reverseLookup failed:', response.status);
+                                }
+                            } catch (e) {
+                                console.log('[SNS Lookup] QuickNode reverseLookup error:', e.message);
+                                continue;
+                            }
+                        }
+                    } catch (quickNodeError) {
+                        console.log('[SNS Lookup] QuickNode API error:', quickNodeError.message);
+                    }
+                } else if (!QUICKNODE_ENDPOINT) {
+                    console.log('[SNS Lookup] QuickNode endpoint not configured. Set QUICKNODE_ENDPOINT to use QuickNode API.');
+                }
+                
                 // Try API endpoints first (fastest)
                 const apiEndpoints = [
                     `https://api.sns.id/v1/reverse-lookup/${walletAddress}`,
