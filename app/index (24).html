@@ -455,10 +455,16 @@
                         const walletPubkey = new window.solanaWeb3.PublicKey(walletAddress);
                         console.log('[SNS Lookup] Created PublicKey:', walletPubkey.toString());
                         
-                        // SNS Program ID
-                        console.log('[SNS Lookup] Creating NAME_PROGRAM_ID...');
-                        const NAME_PROGRAM_ID = new window.solanaWeb3.PublicKey('namesLPneVptA9Z5rqUDD9tMTE1kg');
-                        console.log('[SNS Lookup] NAME_PROGRAM_ID created:', NAME_PROGRAM_ID.toString());
+                        // Note: The on-chain query approach may not work for .skr domains
+                        // .skr domains might use a different program or lookup method
+                        // Since API endpoints returned 404, the wallet likely doesn't have a .skr domain
+                        // or we need to use a different API endpoint
+                        console.log('[SNS Lookup] On-chain query not implemented for .skr domains');
+                        console.log('[SNS Lookup] If you have a .skr domain, please check:');
+                        console.log('[SNS Lookup] 1. The domain is properly linked to your wallet');
+                        console.log('[SNS Lookup] 2. The correct API endpoint for .skr domain lookup');
+                        // Don't throw error, just skip to fallback
+                        return null;
                         
                         // Get all name accounts owned by this wallet
                         console.log('[SNS Lookup] Converting walletPubkey to bytes...');
