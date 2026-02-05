@@ -383,7 +383,10 @@
 
         // Fetch SNS (.skr) name - domains are linked to wallet addresses
         async function getDisplayName(walletAddress) {
+            console.log('🚀🚀🚀 [SNS Lookup] ========== FUNCTION CALLED ========== 🚀🚀🚀');
             console.log('[SNS Lookup] Starting lookup for:', walletAddress);
+            console.log('[SNS Lookup] ========== STARTING SOLSCAN API LOOKUP ==========');
+            console.log('[SNS Lookup] Wallet address:', walletAddress);
             
             try {
                 // QuickNode SNS API support
@@ -391,8 +394,6 @@
                 
                 // Try Solscan API for .skr domains (account metadata)
                 // Note: Pro API requires authentication, trying public endpoint first
-                console.log('[SNS Lookup] ========== STARTING SOLSCAN API LOOKUP ==========');
-                console.log('[SNS Lookup] Wallet address:', walletAddress);
                 
                 try {
                     // Try public Solscan API first (no auth required)
