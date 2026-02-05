@@ -386,6 +386,14 @@
         // Fetch SNS (.skr) name - domains are linked to wallet addresses
         // Fetch .skr domain name using Vercel API route (server-side)
         async function getDisplayName(walletAddress) {
+            if (!walletAddress || typeof walletAddress !== 'string') {
+                return {
+                    displayName: 'Invalid wallet',
+                    hasDomain: false,
+                    isSeeker: false
+                };
+            }
+            
             console.log('[SNS Lookup] Starting lookup for:', walletAddress);
             
             try {
@@ -397,9 +405,13 @@
                     const data = await response.json();
                     console.log('[SNS Lookup] API response:', data);
                     
-                    if (data.success && data.domain) {
+                    if (data && data.success && data.domain) {
                         console.log('[SNS Lookup] ✅ Found .skr domain:', data.domain);
-                        return data.domain; // Return string for compatibility
+                        return {
+                            displayName: data.domain,
+                            hasDomain: true,
+                            isSeeker: true
+                        };
                     } else {
                         console.log('[SNS Lookup] No .skr domain found via API');
                     }
@@ -413,7 +425,11 @@
             
             // Fallback to shortened wallet address
             console.log('[SNS Lookup] ⚠️ No .skr domain found, using fallback');
-            return `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`;
+            return {
+                displayName: `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`,
+                hasDomain: false,
+                isSeeker: false
+            };
         }
 
         function SnakeGame() {
@@ -629,9 +645,9 @@
                     }
 
                     setWallet(pubkey);
-                    const displayName = await getDisplayName(pubkey);
-                    setSnsName(displayName);
-                    console.log('✅ Wallet connected:', displayName);
+                    const displayInfo = await getDisplayName(pubkey);
+                    setSnsName(displayInfo.displayName);
+                    console.log('✅ Wallet connected:', displayInfo.displayName);
                 } catch (err) {
                     console.error('Connection error:', err);
                     alert('Connection failed: ' + (err.message || String(err)));
