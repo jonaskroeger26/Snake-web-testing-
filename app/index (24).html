@@ -383,6 +383,8 @@
 
         // Fetch SNS (.skr) name - domains are linked to wallet addresses
         async function getDisplayName(walletAddress) {
+            console.log('[SNS Lookup] Starting lookup for:', walletAddress);
+            
             try {
                 // Try API endpoints first (fastest)
                 const apiEndpoints = [
@@ -393,12 +395,17 @@
                 
                 for (const endpoint of apiEndpoints) {
                     try {
+                        console.log('[SNS Lookup] Trying API:', endpoint);
                         const apiResponse = await fetch(endpoint, {
                             method: 'GET',
                             headers: { 'Content-Type': 'application/json' }
                         });
+                        console.log('[SNS Lookup] API response status:', apiResponse.status);
+                        
                         if (apiResponse.ok) {
                             const apiData = await apiResponse.json();
+                            console.log('[SNS Lookup] API response data:', apiData);
+                            
                             // Handle different response formats
                             let domain = null;
                             if (apiData && apiData.domain) {
@@ -408,19 +415,27 @@
                                          apiData.find(d => d && d.name && d.name.endsWith('.skr'))?.name;
                             } else if (apiData && apiData.domains && Array.isArray(apiData.domains)) {
                                 domain = apiData.domains.find(d => d && d.endsWith && d.endsWith('.skr'));
+                            } else if (apiData && apiData.name) {
+                                domain = apiData.name;
                             }
                             
+                            console.log('[SNS Lookup] Found domain:', domain);
                             if (domain && typeof domain === 'string' && domain.endsWith('.skr')) {
+                                console.log('[SNS Lookup] ✅ Returning .skr domain:', domain);
                                 return domain;
                             }
+                        } else {
+                            console.log('[SNS Lookup] API error:', apiResponse.status, await apiResponse.text().catch(() => ''));
                         }
                     } catch (apiError) {
+                        console.log('[SNS Lookup] API exception:', apiError.message);
                         continue;
                     }
                 }
                 
-                // Fallback: Use Bonfida SDK + on-chain query
+                // Fallback: Use on-chain query
                 if (typeof solanaWeb3 !== 'undefined') {
+                    console.log('[SNS Lookup] Trying on-chain query...');
                     const connection = new solanaWeb3.Connection(
                         'https://api.mainnet-beta.solana.com',
                         { commitment: 'confirmed' }
@@ -431,6 +446,7 @@
                     const NAME_PROGRAM_ID = new solanaWeb3.PublicKey('namesLPneVptA9Z5rqUDD9tMTE1kg');
                     
                     // Get all name accounts owned by this wallet
+                    console.log('[SNS Lookup] Querying program accounts...');
                     const nameAccounts = await connection.getProgramAccounts(NAME_PROGRAM_ID, {
                         filters: [
                             {
@@ -442,18 +458,28 @@
                         ]
                     });
                     
+                    console.log('[SNS Lookup] Found', nameAccounts.length, 'name accounts');
+                    
                     // Try using Bonfida SDK reverseLookup if available
-                    if (typeof Bonfida !== 'undefined' && Bonfida.reverseLookup) {
+                    // Check multiple possible global names
+                    const bonfidaSDK = window.Bonfida || window.bonfida || window.SPLNameService;
+                    if (bonfidaSDK && bonfidaSDK.reverseLookup) {
+                        console.log('[SNS Lookup] Using Bonfida SDK...');
                         for (const { pubkey } of nameAccounts) {
                             try {
-                                const domainName = await Bonfida.reverseLookup(connection, pubkey);
+                                const domainName = await bonfidaSDK.reverseLookup(connection, pubkey);
+                                console.log('[SNS Lookup] Bonfida reverseLookup result:', domainName);
                                 if (domainName && domainName.endsWith('.skr')) {
+                                    console.log('[SNS Lookup] ✅ Returning .skr domain from SDK:', domainName);
                                     return domainName;
                                 }
                             } catch (e) {
+                                console.log('[SNS Lookup] Bonfida SDK error:', e.message);
                                 continue;
                             }
                         }
+                    } else {
+                        console.log('[SNS Lookup] Bonfida SDK not found, trying direct parsing...');
                     }
                     
                     // Fallback: Parse domain names directly from account data
@@ -468,20 +494,24 @@
                             if (nullIndex > 0) {
                                 const nameBytes = nameData.slice(0, nullIndex);
                                 const domainName = new TextDecoder('utf-8').decode(nameBytes).trim();
+                                console.log('[SNS Lookup] Parsed domain:', domainName);
                                 
                                 if (domainName && domainName.endsWith('.skr')) {
+                                    console.log('[SNS Lookup] ✅ Returning .skr domain from parsing:', domainName);
                                     return domainName;
                                 }
                             }
                         } catch (parseError) {
+                            console.log('[SNS Lookup] Parse error:', parseError.message);
                             continue;
                         }
                     }
                 }
             } catch (error) {
-                console.warn('Failed to lookup .skr domain for', walletAddress, error);
+                console.error('[SNS Lookup] ❌ Error:', error);
             }
             
+            console.log('[SNS Lookup] ⚠️ No .skr domain found, using fallback');
             // Fallback to shortened wallet address
             return `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`;
         }
