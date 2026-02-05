@@ -1,5 +1,5 @@
 // api/get-skr-domain.js
-// Vercel Serverless Function to resolve .skr domains
+// FIXED VERSION - handles errors properly and uses correct Solana connection
 
 import { TldParser } from '@onsol/tldparser';
 import { Connection, PublicKey } from '@solana/web3.js';
@@ -10,51 +10,59 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
-  // Handle OPTIONS preflight request
+  // Handle preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
   
-  // Get wallet address from query parameter
   const { wallet } = req.query;
   
   if (!wallet) {
     return res.status(400).json({ 
       success: false,
-      error: 'Wallet address is required',
-      usage: '/api/get-skr-domain?wallet=YOUR_WALLET_ADDRESS'
+      error: 'Wallet address required',
+      wallet: null,
+      domain: null,
+      isSeeker: false
     });
   }
   
   try {
-    console.log('[API] Looking up .skr domain for:', wallet);
+    // Validate wallet address format
+    let ownerPublicKey;
+    try {
+      ownerPublicKey = new PublicKey(wallet);
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid wallet address format',
+        wallet: wallet,
+        domain: null,
+        isSeeker: false
+      });
+    }
     
-    // Use QuickNode endpoint if available, otherwise use mainnet
-    const QUICKNODE_ENDPOINT = process.env.QUICKNODE_ENDPOINT || 'https://bold-boldest-knowledge.solana-mainnet.quiknode.pro/d31ebc9ab7a456235231f62ce1b43c447712538f/';
-    const rpcEndpoint = QUICKNODE_ENDPOINT || 'https://api.mainnet-beta.solana.com';
+    // Use a reliable RPC endpoint
+    // You can replace this with your own RPC URL if you have one
+    const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
     
-    // Create Solana connection
-    const connection = new Connection(rpcEndpoint, 'confirmed');
+    const connection = new Connection(RPC_URL, {
+      commitment: 'confirmed',
+      confirmTransactionInitialTimeout: 60000
+    });
     
     // Initialize TldParser
     const parser = new TldParser(connection);
     
-    // Create PublicKey from wallet address
-    const ownerPublicKey = new PublicKey(wallet);
-    
-    // Query .skr domains for this wallet
+    // Fetch .skr domains for this wallet
     const skrDomains = await parser.getParsedAllUserDomainsFromTld(
       ownerPublicKey,
-      'skr' // TLD without the dot
+      'skr'
     );
     
-    console.log('[API] Query result:', skrDomains);
-    
-    // Check if any .skr domains were found
+    // Check if any domains were found
     if (skrDomains && skrDomains.length > 0) {
       const domainName = `${skrDomains[0]}.skr`;
-      
-      console.log('[API] ✅ Found .skr domain:', domainName);
       
       return res.status(200).json({
         success: true,
@@ -66,8 +74,6 @@ export default async function handler(req, res) {
     }
     
     // No .skr domain found
-    console.log('[API] No .skr domain found');
-    
     return res.status(200).json({
       success: true,
       wallet: wallet,
@@ -77,13 +83,15 @@ export default async function handler(req, res) {
     });
     
   } catch (error) {
-    console.error('[API] Error:', error);
+    console.error('Error resolving .skr domain:', error);
     
     return res.status(500).json({
       success: false,
+      error: error.message || 'Failed to resolve .skr domain',
       wallet: wallet,
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      domain: null,
+      isSeeker: false,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
