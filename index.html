@@ -420,78 +420,100 @@
                 }
                 
                 // Fallback: Use on-chain query
-                if (typeof solanaWeb3 !== 'undefined') {
+                // Use window.solanaWeb3 (same as used elsewhere in the code)
+                if (window.solanaWeb3 && window.solanaWeb3.PublicKey && window.solanaWeb3.Connection) {
                     console.log('[SNS Lookup] Trying on-chain query...');
-                    const connection = new solanaWeb3.Connection(
-                        'https://api.mainnet-beta.solana.com',
-                        { commitment: 'confirmed' }
-                    );
-                    const walletPubkey = new solanaWeb3.PublicKey(walletAddress);
+                    try {
+                        // Validate wallet address format
+                        if (!walletAddress || typeof walletAddress !== 'string') {
+                            throw new Error('Invalid wallet address: not a string');
+                        }
+                        if (walletAddress.length < 32 || walletAddress.length > 44) {
+                            throw new Error(`Invalid wallet address length: ${walletAddress.length}`);
+                        }
+                        
+                        const connection = new window.solanaWeb3.Connection(
+                            'https://api.mainnet-beta.solana.com',
+                            { commitment: 'confirmed' }
+                        );
+                        
+                        console.log('[SNS Lookup] Creating PublicKey from:', walletAddress);
+                        const walletPubkey = new window.solanaWeb3.PublicKey(walletAddress);
+                        console.log('[SNS Lookup] Created PublicKey:', walletPubkey.toString());
+                        
+                        // SNS Program ID
+                        const NAME_PROGRAM_ID = new window.solanaWeb3.PublicKey('namesLPneVptA9Z5rqUDD9tMTE1kg');
                     
-                    // SNS Program ID
-                    const NAME_PROGRAM_ID = new solanaWeb3.PublicKey('namesLPneVptA9Z5rqUDD9tMTE1kg');
-                    
-                    // Get all name accounts owned by this wallet
-                    console.log('[SNS Lookup] Querying program accounts...');
-                    const nameAccounts = await connection.getProgramAccounts(NAME_PROGRAM_ID, {
-                        filters: [
-                            {
-                                memcmp: {
-                                    offset: 32, // Owner field offset in NameRecordHeader
-                                    bytes: walletPubkey.toBytes()
+                        // Get all name accounts owned by this wallet
+                        console.log('[SNS Lookup] Querying program accounts...');
+                        const nameAccounts = await connection.getProgramAccounts(NAME_PROGRAM_ID, {
+                            filters: [
+                                {
+                                    memcmp: {
+                                        offset: 32, // Owner field offset in NameRecordHeader
+                                        bytes: walletPubkey.toBytes()
+                                    }
+                                }
+                            ]
+                        });
+                        
+                        console.log('[SNS Lookup] Found', nameAccounts.length, 'name accounts');
+                        
+                        // Try using Bonfida SDK reverseLookup if available
+                        // Check multiple possible global names
+                        const bonfidaSDK = window.Bonfida || window.bonfida || window.SPLNameService;
+                        if (bonfidaSDK && bonfidaSDK.reverseLookup) {
+                            console.log('[SNS Lookup] Using Bonfida SDK...');
+                            for (const { pubkey } of nameAccounts) {
+                                try {
+                                    const domainName = await bonfidaSDK.reverseLookup(connection, pubkey);
+                                    console.log('[SNS Lookup] Bonfida reverseLookup result:', domainName);
+                                    if (domainName && domainName.endsWith('.skr')) {
+                                        console.log('[SNS Lookup] ✅ Returning .skr domain from SDK:', domainName);
+                                        return domainName;
+                                    }
+                                } catch (e) {
+                                    console.log('[SNS Lookup] Bonfida SDK error:', e.message);
+                                    continue;
                                 }
                             }
-                        ]
-                    });
+                        } else {
+                            console.log('[SNS Lookup] Bonfida SDK not found, trying direct parsing...');
+                        }
                     
-                    console.log('[SNS Lookup] Found', nameAccounts.length, 'name accounts');
-                    
-                    // Try using Bonfida SDK reverseLookup if available
-                    // Check multiple possible global names
-                    const bonfidaSDK = window.Bonfida || window.bonfida || window.SPLNameService;
-                    if (bonfidaSDK && bonfidaSDK.reverseLookup) {
-                        console.log('[SNS Lookup] Using Bonfida SDK...');
-                        for (const { pubkey } of nameAccounts) {
+                        // Fallback: Parse domain names directly from account data
+                        for (const { account, pubkey } of nameAccounts) {
                             try {
-                                const domainName = await bonfidaSDK.reverseLookup(connection, pubkey);
-                                console.log('[SNS Lookup] Bonfida reverseLookup result:', domainName);
-                                if (domainName && domainName.endsWith('.skr')) {
-                                    console.log('[SNS Lookup] ✅ Returning .skr domain from SDK:', domainName);
-                                    return domainName;
+                                if (!account.data || account.data.length < 100) continue;
+                                
+                                // NameRecordHeader is 96 bytes, domain name starts after that
+                                const nameData = account.data.slice(96);
+                                const nullIndex = nameData.findIndex(byte => byte === 0);
+                                
+                                if (nullIndex > 0) {
+                                    const nameBytes = nameData.slice(0, nullIndex);
+                                    const domainName = new TextDecoder('utf-8').decode(nameBytes).trim();
+                                    console.log('[SNS Lookup] Parsed domain:', domainName);
+                                
+                                    if (domainName && domainName.endsWith('.skr')) {
+                                        console.log('[SNS Lookup] ✅ Returning .skr domain from parsing:', domainName);
+                                        return domainName;
+                                    }
                                 }
-                            } catch (e) {
-                                console.log('[SNS Lookup] Bonfida SDK error:', e.message);
+                            } catch (parseError) {
+                                console.log('[SNS Lookup] Parse error:', parseError.message);
                                 continue;
                             }
                         }
-                    } else {
-                        console.log('[SNS Lookup] Bonfida SDK not found, trying direct parsing...');
+                    } catch (onChainError) {
+                        console.error('[SNS Lookup] On-chain query error:', onChainError.message, onChainError);
                     }
-                    
-                    // Fallback: Parse domain names directly from account data
-                    for (const { account, pubkey } of nameAccounts) {
-                        try {
-                            if (!account.data || account.data.length < 100) continue;
-                            
-                            // NameRecordHeader is 96 bytes, domain name starts after that
-                            const nameData = account.data.slice(96);
-                            const nullIndex = nameData.findIndex(byte => byte === 0);
-                            
-                            if (nullIndex > 0) {
-                                const nameBytes = nameData.slice(0, nullIndex);
-                                const domainName = new TextDecoder('utf-8').decode(nameBytes).trim();
-                                console.log('[SNS Lookup] Parsed domain:', domainName);
-                                
-                                if (domainName && domainName.endsWith('.skr')) {
-                                    console.log('[SNS Lookup] ✅ Returning .skr domain from parsing:', domainName);
-                                    return domainName;
-                                }
-                            }
-                        } catch (parseError) {
-                            console.log('[SNS Lookup] Parse error:', parseError.message);
-                            continue;
-                        }
-                    }
+                } else {
+                    console.log('[SNS Lookup] window.solanaWeb3 not available. Available:', {
+                        windowSolanaWeb3: !!window.solanaWeb3,
+                        hasPublicKey: !!(window.solanaWeb3 && window.solanaWeb3.PublicKey),
+                        hasConnection: !!(window.solanaWeb3 && window.solanaWeb3.Connection)
+                    });
                 }
             } catch (error) {
                 console.error('[SNS Lookup] ❌ Error:', error);
