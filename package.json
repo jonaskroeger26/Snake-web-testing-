@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@onsol/tldparser": "^0.5.3",
+    "@onsol/tldparser": "^0.5.2",
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-wallets": "^0.16.1",
     "@solana/web3.js": "^1.87.6"
