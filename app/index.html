@@ -845,8 +845,15 @@
                         console.log('[SNS Lookup] Wallet PublicKey created:', walletPubkey.toString());
                         
                         // SNS Name Program ID (mainnet)
-                        const NAME_PROGRAM_ID = new PublicKey('namesLPneVptA9Z5rqUDD9tMTWEJwofgaYwp8c2R1r');
-                        console.log('[SNS Lookup] NAME_PROGRAM_ID created:', NAME_PROGRAM_ID.toString());
+                        let NAME_PROGRAM_ID;
+                        try {
+                            NAME_PROGRAM_ID = new PublicKey('namesLPneVptA9Z5rqUDD9tMTWEJwofgaYwp8c2R1r');
+                            console.log('[SNS Lookup] NAME_PROGRAM_ID created:', NAME_PROGRAM_ID.toString());
+                        } catch (programIdError) {
+                            console.error('[SNS Lookup] Failed to create NAME_PROGRAM_ID:', programIdError);
+                            console.error('[SNS Lookup] Error details:', programIdError.message, programIdError.stack);
+                            throw programIdError;
+                        }
                         console.log('[SNS Lookup] Querying SNS program for name accounts owned by wallet...');
                         
                         // Convert wallet pubkey to bytes for filtering
