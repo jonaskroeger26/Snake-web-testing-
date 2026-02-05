@@ -571,27 +571,47 @@
             oscillator.stop(audioContext.currentTime + duration);
         }
 
-        // Fetch SNS (.skr) name
+        // Fetch SNS (.skr) name - domains are linked to wallet addresses
         async function getDisplayName(walletAddress) {
             try {
-                // Try API endpoint first (fastest)
-                try {
-                    // Try SNS API reverse lookup
-                    const apiResponse = await fetch(`https://api.sns.id/v1/reverse-lookup/${walletAddress}`, {
-                        method: 'GET',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                    if (apiResponse.ok) {
-                        const apiData = await apiResponse.json();
-                        if (apiData && apiData.domain && typeof apiData.domain === 'string' && apiData.domain.endsWith('.skr')) {
-                            return apiData.domain;
+                // Try multiple API endpoints for .skr domain lookup
+                const apiEndpoints = [
+                    `https://api.sns.id/v1/reverse-lookup/${walletAddress}`,
+                    `https://api.sns.id/v1/wallet/${walletAddress}/domains`,
+                    `https://api.sns.id/reverse-lookup/${walletAddress}`
+                ];
+                
+                for (const endpoint of apiEndpoints) {
+                    try {
+                        const apiResponse = await fetch(endpoint, {
+                            method: 'GET',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        if (apiResponse.ok) {
+                            const apiData = await apiResponse.json();
+                            // Handle different response formats
+                            let domain = null;
+                            if (apiData && apiData.domain) {
+                                domain = apiData.domain;
+                            } else if (apiData && Array.isArray(apiData) && apiData.length > 0) {
+                                // If it's an array, find the first .skr domain
+                                domain = apiData.find(d => d && d.endsWith && d.endsWith('.skr')) || 
+                                         apiData.find(d => d && d.name && d.name.endsWith('.skr'))?.name;
+                            } else if (apiData && apiData.domains && Array.isArray(apiData.domains)) {
+                                domain = apiData.domains.find(d => d && d.endsWith && d.endsWith('.skr'));
+                            }
+                            
+                            if (domain && typeof domain === 'string' && domain.endsWith('.skr')) {
+                                return domain;
+                            }
                         }
+                    } catch (apiError) {
+                        // Try next endpoint
+                        continue;
                     }
-                } catch (apiError) {
-                    console.log('API lookup failed, trying on-chain query...');
                 }
                 
-                // Fallback: Query on-chain using web3.js
+                // Fallback: Query on-chain - domains are NFTs owned by wallets
                 if (typeof solanaWeb3 !== 'undefined') {
                     const connection = new solanaWeb3.Connection(
                         'https://api.mainnet-beta.solana.com',
@@ -599,16 +619,16 @@
                     );
                     const walletPubkey = new solanaWeb3.PublicKey(walletAddress);
                     
-                    // SNS Program ID
+                    // SNS Program ID - domains are name accounts
                     const NAME_PROGRAM_ID = new solanaWeb3.PublicKey('namesLPneVptA9Z5rqUDD9tMTE1kg');
                     
                     // Get all name accounts owned by this wallet
-                    // Name accounts have the owner at offset 32 in the account data
+                    // The owner field is at offset 32 in NameRecordHeader structure
                     const nameAccounts = await connection.getProgramAccounts(NAME_PROGRAM_ID, {
                         filters: [
                             {
                                 memcmp: {
-                                    offset: 32, // Owner field offset in NameRecordHeader
+                                    offset: 32, // Owner field offset
                                     bytes: walletPubkey.toBytes()
                                 }
                             }
