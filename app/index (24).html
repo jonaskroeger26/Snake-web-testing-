@@ -404,42 +404,48 @@
                     
                     if (solscanResponse.ok) {
                         const solscanData = await solscanResponse.json();
-                        console.log('[SNS Lookup] Solscan API response:', solscanData);
+                        console.log('[SNS Lookup] Solscan API full response:', JSON.stringify(solscanData, null, 2));
+                        console.log('[SNS Lookup] Response type:', typeof solscanData);
+                        console.log('[SNS Lookup] Response keys:', Object.keys(solscanData || {}));
                         
-                        // Check for .skr domain in metadata response
-                        // Response might contain domain info in various formats
-                        let skrDomain = null;
-                        if (solscanData && typeof solscanData === 'object') {
-                            // Check various possible fields
-                            if (solscanData.domain && solscanData.domain.endsWith('.skr')) {
-                                skrDomain = solscanData.domain;
-                            } else if (solscanData.name && solscanData.name.endsWith('.skr')) {
-                                skrDomain = solscanData.name;
-                            } else if (solscanData.seekerId && solscanData.seekerId.endsWith('.skr')) {
-                                skrDomain = solscanData.seekerId;
-                            } else if (solscanData.data && typeof solscanData.data === 'object') {
-                                // Check nested data object
-                                if (solscanData.data.domain && solscanData.data.domain.endsWith('.skr')) {
-                                    skrDomain = solscanData.data.domain;
-                                } else if (solscanData.data.name && solscanData.data.name.endsWith('.skr')) {
-                                    skrDomain = solscanData.data.name;
+                        // Recursively search for .skr domain in the response
+                        function findSkrDomain(obj, path = '') {
+                            if (!obj || typeof obj !== 'object') return null;
+                            
+                            // Check all string values for .skr domain
+                            for (const [key, value] of Object.entries(obj)) {
+                                const currentPath = path ? `${path}.${key}` : key;
+                                
+                                if (typeof value === 'string' && value.endsWith('.skr')) {
+                                    console.log(`[SNS Lookup] Found .skr domain at path: ${currentPath} = ${value}`);
+                                    return value;
                                 }
-                            } else if (Array.isArray(solscanData)) {
-                                // If response is an array, check each item
-                                for (const item of solscanData) {
-                                    if (item && item.domain && item.domain.endsWith('.skr')) {
-                                        skrDomain = item.domain;
-                                        break;
+                                
+                                // Recursively check nested objects
+                                if (typeof value === 'object' && value !== null) {
+                                    const found = findSkrDomain(value, currentPath);
+                                    if (found) return found;
+                                }
+                                
+                                // Check arrays
+                                if (Array.isArray(value)) {
+                                    for (let i = 0; i < value.length; i++) {
+                                        const found = findSkrDomain(value[i], `${currentPath}[${i}]`);
+                                        if (found) return found;
                                     }
                                 }
                             }
+                            return null;
                         }
+                        
+                        const skrDomain = findSkrDomain(solscanData);
                         
                         if (skrDomain) {
                             console.log('[SNS Lookup] ✅ Returning .skr domain from Solscan API:', skrDomain);
                             return skrDomain;
                         } else {
-                            console.log('[SNS Lookup] Solscan API response received but no .skr domain found');
+                            console.log('[SNS Lookup] Solscan API response received but no .skr domain found after recursive search');
+                            console.log('[SNS Lookup] Full response structure:', solscanData);
                         }
                     } else {
                         const errorText = await solscanResponse.text().catch(() => '');
