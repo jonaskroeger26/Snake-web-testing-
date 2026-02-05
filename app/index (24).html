@@ -761,9 +761,13 @@
                     if (head.y >= GRID_SIZE) head.y = 0;
                 }
 
-                // Self-collision: check new head against ALL body segments
-                // This works for ALL game modes including portal
-                for (let i = 0; i < body.length; i++) {
+                // Self-collision: check new head against body segments
+                // Skip the tail (last segment) since it will be removed when snake moves
+                // Unless the head is eating food, in which case we check all segments
+                const willEatFood = head.x === food.x && head.y === food.y;
+                const segmentsToCheck = willEatFood ? body.length : body.length - 1;
+                
+                for (let i = 0; i < segmentsToCheck; i++) {
                     if (head.x === body[i].x && head.y === body[i].y) {
                         if (gameLoopRef.current) {
                             clearInterval(gameLoopRef.current);
