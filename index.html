@@ -441,25 +441,27 @@
                             }
                         });
 
+                        const toApples = (s) => (s >= 10 ? Math.round(Number(s) / 10) : Number(s));
                         const formatted = Object.values(bestScores)
-                            .sort((a, b) => b.score - a.score)
+                            .sort((a, b) => toApples(b.score) - toApples(a.score))
                             .slice(0, 100)
                             .map((entry, idx) => ({
                                 rank: idx + 1,
                                 name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                                score: entry.score >= 10 ? Math.round(entry.score / 10) : entry.score,
+                                score: toApples(entry.score),
                                 wallet: entry.wallet_address
                             }));
 
                         setLeaderboard(formatted);
                     } else {
+                        const toApples = (s) => (s >= 10 ? Math.round(Number(s) / 10) : Number(s));
                         const formatted = data
-                            .sort((a, b) => (b.best_score || 0) - (a.best_score || 0))
+                            .sort((a, b) => toApples(b.best_score || 0) - toApples(a.best_score || 0))
                             .slice(0, 100)
                             .map((entry, idx) => ({
                                 rank: idx + 1,
                                 name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                                score: entry.best_score >= 10 ? Math.round(entry.best_score / 10) : entry.best_score,
+                                score: toApples(entry.best_score),
                                 wallet: entry.wallet_address
                             }));
                         setLeaderboard(formatted);
@@ -582,7 +584,7 @@
             const submitScore = async (finalFoodCount) => {
                 const apples = finalFoodCount;
                 const session = gameSessionRef.current;
-                if (apples > highScore) {
+                if (wallet && apples > highScore) {
                     setHighScore(apples);
                     localStorage.setItem('snakeHighScore', String(apples));
                 }

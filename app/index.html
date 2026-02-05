@@ -711,7 +711,7 @@
                         });
 
                         const formatted = Object.values(bestScores)
-                            .sort((a, b) => b.score - a.score)
+                            .sort((a, b) => scoreToApples(b.score) - scoreToApples(a.score))
                             .slice(0, 100)
                             .map((entry, idx) => ({
                                 rank: idx + 1,
@@ -724,7 +724,7 @@
                     } else {
                         // RPC returns best_score already calculated
                         const formatted = data
-                            .sort((a, b) => b.best_score - a.best_score)
+                            .sort((a, b) => scoreToApples(b.best_score) - scoreToApples(a.best_score))
                             .slice(0, 100)
                             .map((entry, idx) => ({
                                 rank: idx + 1,
@@ -960,7 +960,7 @@
                 const apples = finalFoodCount;
                 const session = gameSessionRef.current;
 
-                if (apples > getHighScore(session.gameMode, session.difficulty)) {
+                if (wallet && apples > getHighScore(session.gameMode, session.difficulty)) {
                     setHighScoreFor(session.gameMode, session.difficulty, apples);
                 }
 
