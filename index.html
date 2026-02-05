@@ -369,24 +369,41 @@
             oscillator.stop(audioContext.currentTime + duration);
         }
 
-        // CORRECT - wrapped in async function
+        // Fetch .skr domain name using Vercel API route (server-side)
         async function getDisplayName(walletAddress) {
+            if (!walletAddress || typeof walletAddress !== 'string') {
+                return 'Invalid wallet';
+            }
+            
             console.log('[SNS Lookup] Starting lookup for:', walletAddress);
             
             try {
                 const response = await fetch(`/api/get-skr-domain?wallet=${walletAddress}`);
-                const data = await response.json();
                 
-                if (data.domain) {
-                    console.log('[SNS Lookup] ✅ Returning .skr domain:', data.domain);
-                    return data.domain;
+                if (response.ok) {
+                    try {
+                        const data = await response.json();
+                        console.log('[SNS Lookup] API response:', data);
+                        
+                        if (data && data.success && data.domain) {
+                            console.log('[SNS Lookup] ✅ Found .skr domain:', data.domain);
+                            return data.domain;
+                        } else {
+                            console.log('[SNS Lookup] No .skr domain found via API');
+                        }
+                    } catch (jsonError) {
+                        console.error('[SNS Lookup] Failed to parse JSON:', jsonError);
+                    }
+                } else {
+                    console.log('[SNS Lookup] API error:', response.status, response.statusText);
                 }
             } catch (error) {
-                console.error('[SNS Lookup] Error:', error);
+                console.error('[SNS Lookup] Error calling API:', error);
             }
             
-            // Fallback
-            return null;
+            // Fallback to shortened wallet address
+            console.log('[SNS Lookup] ⚠️ No .skr domain found, using fallback');
+            return `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`;
         }
 
         function SnakeGame() {
@@ -431,22 +448,27 @@
             // Calculate cell size based on viewport
             useEffect(() => {
                 const calculateCellSize = () => {
-                    // Account for HUD at top (80px) and padding (40px top/bottom, 20px sides)
-                    const availableHeight = window.innerHeight - 80 - 80; // HUD + padding
-                    const availableWidth = window.innerWidth - 40; // Side padding
-                    
-                    // Use the smaller dimension to ensure it fits
-                    const maxSize = Math.min(availableHeight, availableWidth);
-                    
-                    // Calculate cell size to fit GRID_SIZE cells
-                    const calculatedSize = Math.floor(maxSize / GRID_SIZE);
-                    
-                    // Set minimum and maximum cell sizes for playability
-                    const minSize = 12;
-                    const maxSize = 40;
-                    const clampedSize = Math.max(minSize, Math.min(maxSize, calculatedSize));
-                    
-                    setCellSize(clampedSize);
+                    try {
+                        // Account for HUD at top (80px) and padding (40px top/bottom, 20px sides)
+                        const availableHeight = (window.innerHeight || 600) - 80 - 80; // HUD + padding
+                        const availableWidth = (window.innerWidth || 800) - 40; // Side padding
+                        
+                        // Use the smaller dimension to ensure it fits
+                        const maxSize = Math.min(availableHeight, availableWidth);
+                        
+                        // Calculate cell size to fit GRID_SIZE cells
+                        const calculatedSize = Math.floor(maxSize / GRID_SIZE);
+                        
+                        // Set minimum and maximum cell sizes for playability
+                        const minSize = 12;
+                        const maxSize = 40;
+                        const clampedSize = Math.max(minSize, Math.min(maxSize, calculatedSize));
+                        
+                        setCellSize(clampedSize);
+                    } catch (error) {
+                        console.error('Error calculating cell size:', error);
+                        setCellSize(24); // Fallback to default
+                    }
                 };
 
                 calculateCellSize();
@@ -1100,7 +1122,13 @@
             );
         }
 
-        ReactDOM.render(<SnakeGame />, document.getElementById('root'));
+        // Ensure React is loaded before rendering
+        if (typeof React !== 'undefined' && typeof ReactDOM !== 'undefined') {
+            ReactDOM.render(<SnakeGame />, document.getElementById('root'));
+        } else {
+            console.error('React or ReactDOM not loaded');
+            document.getElementById('root').innerHTML = '<div style="color: white; padding: 20px; text-align: center;">Error: React libraries failed to load. Please refresh the page.</div>';
+        }
     </script>
 </body>
 </html>
