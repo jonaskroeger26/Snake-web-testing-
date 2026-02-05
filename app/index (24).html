@@ -17,8 +17,8 @@
     <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
     <script src="https://unpkg.com/@bonfida/spl-name-service@2.1.0/dist/index.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- AllDomains TLD Parser for .skr domain resolution -->
-    <script src="https://unpkg.com/@onsol/tldparser@latest/dist/index.umd.js"></script>
+    <!-- TLD Parser for .skr domain resolution - use specific version and iife format -->
+    <script src="https://unpkg.com/@onsol/tldparser@0.5.2/lib/index.iife.js"></script>
     <!-- Mobile Wallet Adapter (Seeker / Seed Vault) - bundled for WebView/Expo -->
     <script src="mwa-bundle.js"></script>
     <script>
@@ -390,12 +390,16 @@
             
             try {
                 // Check if TldParser is available (loaded from CDN)
-                const TldParser = window.TldParser || (window.onsol && window.onsol.TldParser);
-                
-                if (!TldParser) {
-                    console.log('[SNS Lookup] TldParser not available, using fallback');
+                // TldParser is exposed as window.TldParser.TldParser
+                if (typeof window.TldParser === 'undefined' || !window.TldParser.TldParser) {
+                    console.log('[SNS Lookup] ❌ TldParser not loaded - check script tag');
                     return `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`;
                 }
+                
+                console.log('[SNS Lookup] ✅ TldParser found, querying blockchain...');
+                
+                // Get TldParser class from window.TldParser
+                const { TldParser } = window.TldParser;
                 
                 // Get Connection and PublicKey from window.solanaWeb3
                 const { Connection, PublicKey } = window.solanaWeb3;
@@ -421,11 +425,15 @@
                 // Create PublicKey from wallet address
                 const ownerPublicKey = new PublicKey(walletAddress);
                 
+                console.log('[SNS Lookup] Querying .skr domains for wallet:', walletAddress);
+                
                 // Query .skr domains for this wallet
                 const skrDomains = await parser.getParsedAllUserDomainsFromTld(
                     ownerPublicKey,
                     'skr' // TLD without the dot
                 );
+                
+                console.log('[SNS Lookup] Query result:', skrDomains);
                 
                 // Check if any domains were found
                 if (skrDomains && skrDomains.length > 0) {
