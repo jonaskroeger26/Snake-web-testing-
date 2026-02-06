@@ -1,5 +1,5 @@
 // api/get-skr-domain.js
-// Based on https://gist.github.com/CryptoKix/8b8e6e574c92f6612bd447e3dae11fec
+// Based on official CryptoKix gist: https://gist.github.com/CryptoKix/8b8e6e574c92f6612bd447e3dae11fec
 
 import { TldParser } from '@onsol/tldparser';
 import { Connection, PublicKey } from '@solana/web3.js';
@@ -34,66 +34,93 @@ export default async function handler(req, res) {
     } catch (e) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid wallet address',
+        error: 'Invalid wallet address format',
         wallet: wallet,
         domain: null,
         isSeeker: false
       });
     }
     
-    // Create connection
-    const connection = new Connection(
-      process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-      { commitment: 'confirmed' }
-    );
+    // Create Solana connection
+    const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+    const connection = new Connection(RPC_URL, {
+      commitment: 'confirmed',
+      confirmTransactionInitialTimeout: 30000
+    });
     
-    // Create TldParser
+    console.log('[API] Creating TldParser for wallet:', wallet);
+    
+    // Initialize TldParser
     const parser = new TldParser(connection);
     
-    // Method 1: Try getting the main domain first (fastest)
+    // Method 1: Try getMainDomain first (fastest - gets the user's primary domain)
     try {
-      const mainDomain = await Promise.race([
-        parser.getMainDomain(owner),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
-      ]);
+      console.log('[API] Trying getMainDomain...');
       
-      if (mainDomain && mainDomain.tld === 'skr') {
+      const mainDomainPromise = parser.getMainDomain(owner);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Main domain timeout')), 10000)
+      );
+      
+      const mainDomain = await Promise.race([mainDomainPromise, timeoutPromise]);
+      
+      console.log('[API] Main domain result:', mainDomain);
+      
+      // Check if it's a .skr domain
+      if (mainDomain && mainDomain.tld === 'skr' && mainDomain.domain) {
         const domainName = `${mainDomain.domain}.skr`;
+        console.log('[API] ✅ Found main .skr domain:', domainName);
+        
         return res.status(200).json({
           success: true,
           wallet: wallet,
           domain: domainName,
           isSeeker: true,
-          method: 'mainDomain'
+          method: 'getMainDomain'
         });
       }
+      
+      console.log('[API] Main domain is not .skr or not found');
+      
     } catch (mainDomainError) {
-      console.log('Main domain lookup failed, trying getAllDomains:', mainDomainError.message);
+      console.log('[API] getMainDomain failed:', mainDomainError.message);
     }
     
     // Method 2: Get all .skr domains if main domain didn't work
     try {
-      const skrDomains = await Promise.race([
-        parser.getParsedAllUserDomainsFromTld(owner, 'skr'),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
-      ]);
+      console.log('[API] Trying getParsedAllUserDomainsFromTld for .skr...');
       
-      if (skrDomains && skrDomains.length > 0) {
+      const allDomainsPromise = parser.getParsedAllUserDomainsFromTld(owner, 'skr');
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('All domains timeout')), 10000)
+      );
+      
+      const skrDomains = await Promise.race([allDomainsPromise, timeoutPromise]);
+      
+      console.log('[API] All .skr domains result:', skrDomains);
+      
+      if (skrDomains && Array.isArray(skrDomains) && skrDomains.length > 0) {
         const domainName = `${skrDomains[0]}.skr`;
+        console.log('[API] ✅ Found .skr domain from all domains:', domainName);
+        
         return res.status(200).json({
           success: true,
           wallet: wallet,
           domain: domainName,
           isSeeker: true,
           allDomains: skrDomains.map(d => `${d}.skr`),
-          method: 'getAllDomains'
+          method: 'getParsedAllUserDomainsFromTld'
         });
       }
+      
+      console.log('[API] No .skr domains found');
+      
     } catch (allDomainsError) {
-      console.error('All domains lookup failed:', allDomainsError.message);
+      console.log('[API] getParsedAllUserDomainsFromTld failed:', allDomainsError.message);
     }
     
     // No .skr domain found
+    console.log('[API] No .skr domain found for wallet:', wallet);
     return res.status(200).json({
       success: true,
       wallet: wallet,
@@ -103,14 +130,15 @@ export default async function handler(req, res) {
     });
     
   } catch (error) {
-    console.error('Error resolving .skr domain:', error);
+    console.error('[API] Error resolving .skr domain:', error);
     
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to resolve .skr domain',
       wallet: wallet,
       domain: null,
-      isSeeker: false
+      isSeeker: false,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
