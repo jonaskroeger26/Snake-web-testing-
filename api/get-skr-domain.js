@@ -189,11 +189,13 @@ export default async function handler(req, res) {
           const domainNames = [];
           
           for (const domainKey of skrDomainKeys.slice(0, 5)) { // Limit to first 5
+            let domainFound = false; // Flag to track if we found a domain for this account
+            
             try {
               console.log('[API] Resolving domain name for account:', domainKey.toString());
               
               // Method 3a: Try reverseLookupNameAccount with correct parent owner
-              if (typeof parser.reverseLookupNameAccount === 'function') {
+              if (typeof parser.reverseLookupNameAccount === 'function' && !domainFound) {
                 try {
                   // reverseLookupNameAccount(nameAccount, parentOwner)
                   // Use the parent owner from TLD if we found it
@@ -215,19 +217,21 @@ export default async function handler(req, res) {
                       domainName = `${domainInfo.name}.skr`;
                     }
                     
-                  if (domainName && domainName.endsWith('.skr')) {
-                    console.log('[API] ✅ Successfully resolved domain name:', domainName);
-                    domainNames.push(domainName);
-                    continue; // Success, move to next
+                    if (domainName && domainName.endsWith('.skr')) {
+                      console.log('[API] ✅ Successfully resolved domain name:', domainName);
+                      domainNames.push(domainName);
+                      domainFound = true;
+                      continue; // Success, move to next domain key
+                    }
                   }
+                } catch (reverseError) {
+                  console.log('[API] reverseLookupNameAccount failed:', reverseError.message);
+                  console.log('[API] Error details:', reverseError);
                 }
-              } catch (reverseError) {
-                console.log('[API] reverseLookupNameAccount failed:', reverseError.message);
-                console.log('[API] Error details:', reverseError);
-              }
               }
               
-              // Method 3b: Decode domain name from raw account data
+              // Method 3b: Decode domain name directly from raw account data
+              if (!domainFound) {
               try {
                 console.log('[API] Fetching raw account data for:', domainKey.toString());
                 const accountInfo = await connection.getAccountInfo(domainKey);
@@ -236,79 +240,147 @@ export default async function handler(req, res) {
                   console.log('[API] Account data length:', accountInfo.data.length);
                   console.log('[API] Account owner:', accountInfo.owner.toString());
                   
-                  // Try to use TldParser's getNameRecordFromDomainTld if available
-                  // But we need the domain name first, so this won't work
-                  
-                  // Alternative: Try to decode NameRecordHeader from account data
-                  // The account data structure for AllDomains follows NameRecordHeader format:
-                  // - parent_name (32 bytes)
-                  // - owner (32 bytes) 
-                  // - class (32 bytes)
-                  // - data (variable length, contains domain name)
-                  
-                  // For .skr domains, we can try to extract the domain name from the account
-                  // The domain name might be stored in the data section or derivable from the account address
-                  
-                  // Try using the account key to reverse lookup via connection
-                  // Or try parsing the data section for the domain name string
-                  
                   const accountData = accountInfo.data;
                   
-                  // Try to find domain name string in the account data
-                  // Domain names are typically stored as UTF-8 strings in the data section
-                  // Skip the header (first 96 bytes for NameRecordHeader)
+                  // AllDomains account structure:
+                  // Bytes 0-95: Header (parent_name 32b, owner 32b, class 32b)
+                  // Bytes 96+: Domain data (usually starts with a length prefix)
+                  
                   if (accountData.length > 96) {
-                    const dataSection = accountData.slice(96);
+                    // Helper function to read length-prefixed string
+                    const readLengthPrefixedString = (offset) => {
+                      try {
+                        if (offset + 4 > accountData.length) return null;
+                        
+                        // Read length (4 bytes, little-endian)
+                        const length = accountData.readUInt32LE(offset);
+                        
+                        if (length === 0 || length > 100 || offset + 4 + length > accountData.length) {
+                          return null;
+                        }
+                        
+                        // Read string data
+                        const stringBytes = accountData.slice(offset + 4, offset + 4 + length);
+                        const domainName = Buffer.from(stringBytes).toString('utf8').trim();
+                        
+                        // Validate domain name format (a-z, 0-9, hyphen, no dots in name part)
+                        if (/^[a-z0-9-]+$/i.test(domainName) && domainName.length > 0 && domainName.length < 50) {
+                          return domainName;
+                        }
+                      } catch (e) {
+                        return null;
+                      }
+                      return null;
+                    };
                     
-                    // Try to decode as UTF-8 string
-                    try {
-                      // Find null-terminated string or length-prefixed string
+                    // Helper function to scan for valid domain name strings
+                    const scanForDomainName = (startOffset, maxLength = 100) => {
                       let domainNameBytes = [];
-                      for (let i = 0; i < Math.min(dataSection.length, 100); i++) {
-                        const byte = dataSection[i];
-                        if (byte === 0) break; // Null terminator
-                        if (byte >= 32 && byte <= 126) { // Printable ASCII
+                      let foundStart = false;
+                      
+                      for (let i = startOffset; i < Math.min(accountData.length, startOffset + maxLength); i++) {
+                        const byte = accountData[i];
+                        
+                        // Skip null bytes at start
+                        if (!foundStart && byte === 0) continue;
+                        foundStart = true;
+                        
+                        // Check for valid domain name characters: a-z, 0-9, hyphen
+                        if ((byte >= 48 && byte <= 57) || // 0-9
+                            (byte >= 65 && byte <= 90) || // A-Z
+                            (byte >= 97 && byte <= 122) || // a-z
+                            byte === 45) { // hyphen
                           domainNameBytes.push(byte);
+                        } else if (byte === 0) {
+                          // Null terminator - end of string
+                          break;
                         } else {
-                          break; // Non-printable, probably not domain name
+                          // Invalid character - reset if we haven't found a valid name yet
+                          if (domainNameBytes.length < 3) {
+                            domainNameBytes = [];
+                            foundStart = false;
+                          } else {
+                            break; // We have a valid name, stop here
+                          }
                         }
                       }
                       
-                      if (domainNameBytes.length > 0) {
-                        const possibleDomain = Buffer.from(domainNameBytes).toString('utf8').trim();
-                        // Validate it looks like a domain name (alphanumeric + dots/hyphens)
-                        if (/^[a-z0-9.-]+$/i.test(possibleDomain) && possibleDomain.length > 0 && possibleDomain.length < 50) {
-                          const fullDomain = possibleDomain.endsWith('.skr') ? possibleDomain : `${possibleDomain}.skr`;
-                          console.log('[API] ✅ Decoded domain name from account data:', fullDomain);
-                          domainNames.push(fullDomain);
-                          continue;
+                      if (domainNameBytes.length >= 3) {
+                        const domainName = Buffer.from(domainNameBytes).toString('utf8').trim();
+                        // Validate format
+                        if (/^[a-z0-9-]+$/i.test(domainName) && domainName.length >= 3 && domainName.length < 50) {
+                          return domainName;
                         }
                       }
-                    } catch (decodeError) {
-                      console.log('[API] Failed to decode domain from account data:', decodeError.message);
+                      
+                      return null;
+                    };
+                    
+                    // Method 1: Try length-prefixed string at byte 96
+                    console.log('[API] Trying length-prefixed string at offset 96...');
+                    let decodedDomain = readLengthPrefixedString(96);
+                    if (decodedDomain) {
+                      console.log('[API] ✅ Decoded domain name (offset 96):', decodedDomain);
+                      domainNames.push(`${decodedDomain}.skr`);
+                      domainFound = true;
                     }
-                  }
-                  
-                  // If direct decoding didn't work, try using TldParser's internal methods
-                  // Some versions might have getNameRecordFromAccountAddress or similar
-                  if (typeof parser.getNameRecordFromAccountAddress === 'function') {
-                    try {
-                      const nameRecord = await parser.getNameRecordFromAccountAddress(domainKey);
-                      console.log('[API] getNameRecordFromAccountAddress result:', nameRecord);
-                      if (nameRecord && nameRecord.domain) {
-                        const fullDomain = `${nameRecord.domain}.skr`;
-                        console.log('[API] ✅ Got domain from getNameRecordFromAccountAddress:', fullDomain);
-                        domainNames.push(fullDomain);
-                        continue;
+                    
+                    // Method 2: Try alternative offsets (100, 104, 108) if Method 1 didn't work
+                    if (!domainFound) {
+                      const offsets = [100, 104, 108];
+                      for (const offset of offsets) {
+                        console.log(`[API] Trying length-prefixed string at offset ${offset}...`);
+                        decodedDomain = readLengthPrefixedString(offset);
+                        if (decodedDomain) {
+                          console.log(`[API] ✅ Decoded domain name (offset ${offset}):`, decodedDomain);
+                          domainNames.push(`${decodedDomain}.skr`);
+                          domainFound = true;
+                          break; // Found domain, exit offset loop
+                        }
                       }
-                    } catch (nameRecordError) {
-                      console.log('[API] getNameRecordFromAccountAddress failed:', nameRecordError.message);
                     }
+                    
+                    // Method 3: Scan the entire account for valid domain name strings
+                    if (!domainFound) {
+                      console.log('[API] Scanning account data for domain name strings...');
+                      const scanStartOffsets = [96, 100, 104, 108, 112];
+                      for (const startOffset of scanStartOffsets) {
+                        decodedDomain = scanForDomainName(startOffset);
+                        if (decodedDomain) {
+                          console.log(`[API] ✅ Found domain name via scan (offset ${startOffset}):`, decodedDomain);
+                          domainNames.push(`${decodedDomain}.skr`);
+                          domainFound = true;
+                          break; // Found domain, exit scan loop
+                        }
+                      }
+                    }
+                    
+                    // Method 4: Full account scan (more thorough but slower)
+                    if (!domainFound) {
+                      console.log('[API] Performing full account scan...');
+                      decodedDomain = scanForDomainName(96, accountData.length - 96);
+                      if (decodedDomain) {
+                        console.log('[API] ✅ Found domain name via full scan:', decodedDomain);
+                        domainNames.push(`${decodedDomain}.skr`);
+                        domainFound = true;
+                      }
+                    }
+                    
+                    // If we found a domain, continue to next domain key
+                    if (domainFound) {
+                      continue;
+                    }
+                    
+                    console.log('[API] Could not decode domain name from account data');
+                  } else {
+                    console.log('[API] Account data too short (< 96 bytes)');
                   }
                 }
               } catch (accountError) {
                 console.log('[API] Failed to fetch/decode account info:', accountError.message);
+                console.log('[API] Error stack:', accountError.stack);
               }
+              } // End of if (!domainFound) for account decoding
               
             } catch (e) {
               console.log('[API] Failed to resolve domain from account:', domainKey.toString(), e.message);
