@@ -246,6 +246,24 @@ export default async function handler(req, res) {
                   // Bytes 0-95: Header (parent_name 32b, owner 32b, class 32b)
                   // Bytes 96+: Domain data (usually starts with a length prefix)
                   
+                  // Hex dump of bytes 96-150 to find where domain name is stored
+                  if (accountData.length > 96) {
+                    const hexDumpStart = 96;
+                    const hexDumpEnd = Math.min(150, accountData.length);
+                    const hexDumpBytes = accountData.slice(hexDumpStart, hexDumpEnd);
+                    const hexString = Array.from(hexDumpBytes)
+                      .map(b => b.toString(16).padStart(2, '0'))
+                      .join(' ');
+                    console.log(`[API] Hex dump of bytes ${hexDumpStart}-${hexDumpEnd}:`);
+                    console.log(`[API] ${hexString}`);
+                    
+                    // Also show ASCII representation
+                    const asciiString = Array.from(hexDumpBytes)
+                      .map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.')
+                      .join('');
+                    console.log(`[API] ASCII representation: ${asciiString}`);
+                  }
+                  
                   if (accountData.length > 96) {
                     // Helper function to read length-prefixed string
                     const readLengthPrefixedString = (offset) => {
