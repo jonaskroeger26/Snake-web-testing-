@@ -89,7 +89,63 @@ export default async function handler(req, res) {
       console.log('[API] getMainDomain failed:', mainDomainError.message);
     }
     
-    // Method 2: Try getParsedAllUserDomainsFromTld (from CryptoKix gist)
+    // Method 2: Try getAllUserDomains (might return parsed domain names)
+    try {
+      console.log('[API] Trying getAllUserDomains (all TLDs)...');
+      
+      if (typeof parser.getAllUserDomains === 'function') {
+        const allDomainsPromise = parser.getAllUserDomains(owner);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('All domains timeout')), 10000)
+        );
+        
+        const allDomains = await Promise.race([allDomainsPromise, timeoutPromise]);
+        
+        console.log('[API] getAllUserDomains result:', allDomains);
+        console.log('[API] getAllUserDomains type:', typeof allDomains, Array.isArray(allDomains) ? 'array' : 'not array');
+        
+        if (allDomains && Array.isArray(allDomains) && allDomains.length > 0) {
+          // Filter for .skr domains
+          const skrDomains = allDomains.filter(d => {
+            if (typeof d === 'string') {
+              return d.endsWith('.skr') || d.includes('.skr');
+            } else if (d && typeof d === 'object') {
+              return d.tld === 'skr' || d.domain?.endsWith('.skr') || d.name?.endsWith('.skr');
+            }
+            return false;
+          });
+          
+          if (skrDomains.length > 0) {
+            const firstDomain = skrDomains[0];
+            const domainName = typeof firstDomain === 'string'
+              ? (firstDomain.endsWith('.skr') ? firstDomain : `${firstDomain}.skr`)
+              : (firstDomain.domain ? `${firstDomain.domain}.skr` : (firstDomain.name ? `${firstDomain.name}.skr` : null));
+            
+            if (domainName) {
+              console.log('[API] ✅ Found .skr domain from getAllUserDomains:', domainName);
+              
+              return res.status(200).json({
+                success: true,
+                wallet: wallet,
+                domain: domainName,
+                isSeeker: true,
+                allDomains: skrDomains.map(d => 
+                  typeof d === 'string' ? (d.endsWith('.skr') ? d : `${d}.skr`) : 
+                  (d.domain ? `${d.domain}.skr` : `${d.name}.skr`)
+                ),
+                method: 'getAllUserDomains'
+              });
+            }
+          }
+        }
+      } else {
+        console.log('[API] getAllUserDomains method not available');
+      }
+    } catch (allDomainsError) {
+      console.log('[API] getAllUserDomains failed:', allDomainsError.message);
+    }
+    
+    // Method 2b: Try getParsedAllUserDomainsFromTld (from CryptoKix gist)
     try {
       console.log('[API] Trying getParsedAllUserDomainsFromTld for .skr...');
       
