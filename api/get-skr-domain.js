@@ -585,8 +585,50 @@ export default async function handler(req, res) {
       console.log('[API] Error stack:', allDomainsError.stack);
     }
     
-    // Fallback: Hardcoded domain mapping for known wallets
-    // This is needed until we can properly decode from account data
+    // Fallback 1: Try AllDomains API (if available)
+    try {
+      console.log('[API] Trying AllDomains API reverse lookup...');
+      const allDomainsApiUrl = `https://alldomains.id/api/wallet/${wallet}/domains`;
+      const apiResponse = await fetch(allDomainsApiUrl, {
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (apiResponse.ok) {
+        const apiData = await apiResponse.json();
+        console.log('[API] AllDomains API response:', apiData);
+        
+        // API might return array of domains or object with domains property
+        const domains = Array.isArray(apiData) ? apiData : (apiData.domains || []);
+        
+        // Find .skr domain
+        const skrDomain = domains.find(d => {
+          const name = typeof d === 'string' ? d : (d.name || d.domain || '');
+          return name.endsWith('.skr');
+        });
+        
+        if (skrDomain) {
+          const domainName = typeof skrDomain === 'string' 
+            ? skrDomain 
+            : (skrDomain.name || skrDomain.domain || '');
+          
+          if (domainName.endsWith('.skr')) {
+            console.log('[API] ✅ Found .skr domain via AllDomains API:', domainName);
+            return res.status(200).json({
+              success: true,
+              wallet: wallet,
+              domain: domainName,
+              isSeeker: true,
+              method: 'alldomains_api'
+            });
+          }
+        }
+      }
+    } catch (apiError) {
+      console.log('[API] AllDomains API failed:', apiError.message);
+    }
+    
+    // Fallback 2: Hardcoded domain mapping for known wallets
+    // This is needed until we can properly decode from account data or API works
     const hardcodedDomains = {
       '4B3K1Zwvj4TJoEjtWsyKDrFcoQvFoA49nR82Sm2dscgy': 'jonaskroeger.skr',
       // Add more wallet -> domain mappings here as needed
