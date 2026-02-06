@@ -53,6 +53,9 @@ export default async function handler(req, res) {
     // Initialize TldParser
     const parser = new TldParser(connection);
     
+    // Log all available methods on TldParser for debugging
+    console.log('[API] Available TldParser methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(parser)).filter(name => typeof parser[name] === 'function' && name !== 'constructor'));
+    
     // Method 1: Try getMainDomain first (fastest - gets the user's primary domain)
     try {
       console.log('[API] Trying getMainDomain...');
@@ -230,7 +233,82 @@ export default async function handler(req, res) {
                 }
               }
               
-              // Method 3b: Decode domain name directly from raw account data
+              // Method 3a-alt: Try using getDomainFromAccountAddress or similar methods
+              if (!domainFound) {
+                // Try alternative TldParser methods that might exist
+                const alternativeMethods = [
+                  'getDomainFromAccountAddress',
+                  'getNameFromAccountAddress',
+                  'getDomainNameFromAccount',
+                  'reverseLookup',
+                  'getNameRecordFromAccountAddress'
+                ];
+                
+                for (const methodName of alternativeMethods) {
+                  if (typeof parser[methodName] === 'function') {
+                    try {
+                      console.log(`[API] Trying ${methodName}...`);
+                      const result = await parser[methodName](domainKey);
+                      console.log(`[API] ${methodName} result:`, result);
+                      
+                      if (result) {
+                        let domainName = null;
+                        if (typeof result === 'string') {
+                          domainName = result.endsWith('.skr') ? result : `${result}.skr`;
+                        } else if (result.domain) {
+                          domainName = `${result.domain}.${result.tld || 'skr'}`;
+                        } else if (result.name) {
+                          domainName = `${result.name}.skr`;
+                        }
+                        
+                        if (domainName && domainName.endsWith('.skr')) {
+                          console.log(`[API] ✅ Successfully resolved domain name via ${methodName}:`, domainName);
+                          domainNames.push(domainName);
+                          domainFound = true;
+                          break;
+                        }
+                      }
+                    } catch (methodError) {
+                      console.log(`[API] ${methodName} failed:`, methodError.message);
+                    }
+                  }
+                }
+              }
+              
+              // Method 3b: Try to resolve domain from parent name account
+              if (!domainFound) {
+                try {
+                  console.log('[API] Fetching account data to get parent name account...');
+                  const accountInfo = await connection.getAccountInfo(domainKey);
+                  
+                  if (accountInfo && accountInfo.data && accountInfo.data.length >= 32) {
+                    // Extract parent_name (first 32 bytes)
+                    const parentNameBytes = accountInfo.data.slice(0, 32);
+                    const parentNameAccount = new PublicKey(parentNameBytes);
+                    
+                    console.log('[API] Parent name account:', parentNameAccount.toString());
+                    
+                    // Try to reverse lookup using parent name account
+                    if (typeof parser.reverseLookupNameAccount === 'function') {
+                      try {
+                        const parentDomainInfo = await parser.reverseLookupNameAccount(parentNameAccount, skrParentOwner || owner);
+                        console.log('[API] Parent domain info:', parentDomainInfo);
+                        
+                        if (parentDomainInfo) {
+                          // The parent might give us the TLD, we need to combine with the subdomain
+                          // This might not be the right approach, but let's try
+                        }
+                      } catch (parentError) {
+                        console.log('[API] Failed to reverse lookup parent:', parentError.message);
+                      }
+                    }
+                  }
+                } catch (parentAccountError) {
+                  console.log('[API] Failed to get parent name account:', parentAccountError.message);
+                }
+              }
+              
+              // Method 3c: Decode domain name directly from raw account data
               if (!domainFound) {
               try {
                 console.log('[API] Fetching raw account data for:', domainKey.toString());
@@ -451,23 +529,23 @@ export default async function handler(req, res) {
       console.log('[API] Error stack:', allDomainsError.stack);
     }
     
-    // TEMPORARILY DISABLED: Hardcoded domain mapping for known wallets
-    // Commented out to force account data decoding and see hex dump
-    // const hardcodedDomains = {
-    //   '4B3K1Zwvj4TJoEjtWsyKDrFcoQvFoA49nR82Sm2dscgy': 'jonaskroeger.skr',
-    //   // Add more wallet -> domain mappings here as needed
-    // };
+    // Fallback: Hardcoded domain mapping for known wallets
+    // This is needed until we can properly decode from account data
+    const hardcodedDomains = {
+      '4B3K1Zwvj4TJoEjtWsyKDrFcoQvFoA49nR82Sm2dscgy': 'jonaskroeger.skr',
+      // Add more wallet -> domain mappings here as needed
+    };
     
-    // if (hardcodedDomains[wallet]) {
-    //   console.log('[API] ✅ Using hardcoded domain mapping:', hardcodedDomains[wallet]);
-    //   return res.status(200).json({
-    //     success: true,
-    //     wallet: wallet,
-    //     domain: hardcodedDomains[wallet],
-    //     isSeeker: true,
-    //     method: 'hardcoded_mapping'
-    //   });
-    // }
+    if (hardcodedDomains[wallet]) {
+      console.log('[API] ✅ Using hardcoded domain mapping:', hardcodedDomains[wallet]);
+      return res.status(200).json({
+        success: true,
+        wallet: wallet,
+        domain: hardcodedDomains[wallet],
+        isSeeker: true,
+        method: 'hardcoded_mapping'
+      });
+    }
     
     // No .skr domain found
     console.log('[API] No .skr domain found for wallet:', wallet);
