@@ -40,21 +40,32 @@ async function fetchSKRDomains() {
   try {
     // Get all accounts owned by Name Service program with .skr parent
     console.log('🔍 Querying Name Service program accounts...');
+    console.log('⚠️  Note: Public RPC endpoints may have rate limits. Consider using a paid RPC for faster results.');
     
-    const allAccounts = await connection.getProgramAccounts(NAME_SERVICE_PROGRAM_ID, {
-      filters: [
-        {
-          memcmp: {
-            offset: 0,
-            bytes: SKR_TLD_PARENT.toBytes()
+    // Query without dataSlice - some RPC endpoints don't support it
+    // memcmp bytes should be Uint8Array
+    const parentBytes = Array.from(SKR_TLD_PARENT.toBytes());
+    
+    let allAccounts;
+    try {
+      allAccounts = await connection.getProgramAccounts(NAME_SERVICE_PROGRAM_ID, {
+        filters: [
+          {
+            memcmp: {
+              offset: 0,
+              bytes: new Uint8Array(parentBytes)
+            }
           }
-        }
-      ],
-      dataSlice: {
-        offset: 0,
-        length: 64 // Just need parent (32) + owner (32)
-      }
-    });
+        ]
+      });
+    } catch (rpcError) {
+      console.error('❌ RPC Error:', rpcError.message);
+      console.log('\n💡 Suggestions:');
+      console.log('1. Try using a different RPC endpoint (e.g., QuickNode, Helius)');
+      console.log('2. Set SOLANA_RPC_URL environment variable');
+      console.log('3. The public RPC may have restrictions on getProgramAccounts');
+      throw rpcError;
+    }
     
     console.log(`✅ Found ${allAccounts.length} .skr domain accounts`);
     console.log(`📊 Already have ${totalFetched} domains in lookup`);
