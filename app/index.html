@@ -885,19 +885,43 @@
                     let pubkey = null;
                     
                     if (walletId === 'mwa') {
-                        const adapter = window.__snakeWalletAdapter;
+                        let adapter = window.__snakeWalletAdapter;
+                        const isAndroid = /android/i.test(navigator.userAgent);
+                        const isInApp = window.__SNAKE_IN_APP || window.ReactNativeWebView;
+                        
                         console.log('[Snake] MWA connect attempt:', {
                             adapter: !!adapter,
                             hasConnect: typeof adapter?.connect === 'function',
                             ready: adapter?.ready,
-                            inApp: window.__SNAKE_IN_APP
+                            isAndroid,
+                            isInApp
                         });
+                        
+                        // Wait for adapter to initialize if needed
+                        if ((isAndroid || isInApp) && (!adapter?.connect || typeof adapter.connect !== 'function')) {
+                            console.log('[Snake] Waiting for MWA adapter to initialize...');
+                            for (let i = 0; i < 30; i++) { // Wait up to 6 seconds
+                                adapter = window.__snakeWalletAdapter;
+                                if (adapter && adapter.connect && typeof adapter.connect === 'function') {
+                                    console.log('[Snake] ✅ MWA adapter ready after', i * 200, 'ms');
+                                    break;
+                                }
+                                await new Promise(r => setTimeout(r, 200));
+                            }
+                        }
                         
                         if (adapter && typeof adapter.connect === 'function') {
                             console.log('[Snake] Calling adapter.connect()...');
                             try {
-                                pubkey = await adapter.connect();
-                                console.log('[Snake] ✅ MWA connected, pubkey:', pubkey);
+                                const result = await adapter.connect();
+                                // Handle both string and object responses
+                                pubkey = typeof result === 'string' ? result : (result?.publicKey?.toString() || result?.address || result);
+                                if (pubkey) {
+                                    console.log('[Snake] ✅ MWA connected, pubkey:', pubkey);
+                                } else {
+                                    console.warn('[Snake] MWA connect returned unexpected format:', result);
+                                    throw new Error('MWA connection returned invalid response');
+                                }
                             } catch (connectErr) {
                                 console.error('[Snake] ❌ MWA connect error:', connectErr);
                                 throw connectErr;

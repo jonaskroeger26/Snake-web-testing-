@@ -639,42 +639,87 @@
                 try {
                     let pubkey = null;
                     let adapter = window.__snakeWalletAdapter;
-                    console.log('[Snake] connectWallet called, adapter:', adapter ? { ready: adapter.ready, hasConnect: !!adapter.connect } : 'missing');
+                    const isAndroid = /android/i.test(navigator.userAgent);
+                    const isInApp = window.__SNAKE_IN_APP || window.ReactNativeWebView;
+                    
+                    console.log('[Snake] connectWallet called', {
+                        isAndroid,
+                        isInApp,
+                        adapter: adapter ? { ready: adapter.ready, hasConnect: !!adapter?.connect } : 'missing',
+                        mwaBundleLoaded: typeof window.__snakeWalletAdapter !== 'undefined'
+                    });
 
-                    // On Android, give MWA (Seeker / Seed Vault) a moment to register
-                    if (/android/i.test(navigator.userAgent) && adapter && !adapter.connect) {
-                        console.log('[Snake] Waiting for MWA to initialize...');
-                        for (let i = 0; i < 15 && (!adapter.connect || !adapter.ready); i++) {
-                            await new Promise(r => setTimeout(r, 200));
+                    // On Android/WebView, wait longer for MWA adapter to initialize
+                    if (isAndroid || isInApp) {
+                        console.log('[Snake] Waiting for MWA adapter to initialize...');
+                        for (let i = 0; i < 30; i++) { // Wait up to 6 seconds
                             adapter = window.__snakeWalletAdapter;
+                            if (adapter && adapter.connect && typeof adapter.connect === 'function') {
+                                console.log('[Snake] ✅ MWA adapter ready after', i * 200, 'ms');
+                                break;
+                            }
+                            await new Promise(r => setTimeout(r, 200));
                         }
-                        console.log('[Snake] After wait, adapter:', adapter ? { ready: adapter.ready, hasConnect: !!adapter.connect } : 'missing');
+                        console.log('[Snake] After wait, adapter:', adapter ? { 
+                            ready: adapter.ready, 
+                            hasConnect: !!adapter?.connect,
+                            connectType: typeof adapter?.connect
+                        } : 'missing');
                     }
 
                     // 1) Prefer Mobile Wallet Adapter (Seeker / Seed Vault internal wallet)
-                    if (adapter && adapter.connect) {
+                    if (adapter && adapter.connect && typeof adapter.connect === 'function') {
                         console.log('[Snake] Attempting MWA connect...');
                         try {
-                            pubkey = await adapter.connect();
-                            console.log('[Snake] MWA connected, pubkey:', pubkey);
+                            const result = await adapter.connect();
+                            // Handle both string and object responses
+                            pubkey = typeof result === 'string' ? result : (result?.publicKey?.toString() || result?.address || result);
+                            if (pubkey) {
+                                console.log('[Snake] ✅ MWA connected, pubkey:', pubkey);
+                            } else {
+                                console.warn('[Snake] MWA connect returned unexpected format:', result);
+                            }
                         } catch (mwaErr) {
-                            console.warn('[Snake] MWA connect failed, trying Phantom:', mwaErr.message, mwaErr);
+                            console.warn('[Snake] MWA connect failed:', mwaErr.message, mwaErr);
+                            // Don't throw - try Phantom as fallback
                         }
                     } else {
-                        console.log('[Snake] MWA adapter not available (ready:', adapter?.ready, ', hasConnect:', !!adapter?.connect, ')');
+                        console.log('[Snake] MWA adapter not available', {
+                            adapter: !!adapter,
+                            ready: adapter?.ready,
+                            hasConnect: !!adapter?.connect,
+                            connectType: typeof adapter?.connect
+                        });
                     }
 
                     // 2) Fallback: Phantom (browser extension or in-app browser)
                     if (!pubkey && window.solana?.isPhantom) {
-                        const response = await window.solana.connect();
-                        pubkey = response.publicKey.toString();
+                        try {
+                            const response = await window.solana.connect();
+                            pubkey = response.publicKey.toString();
+                            console.log('[Snake] ✅ Phantom connected, pubkey:', pubkey);
+                        } catch (phantomErr) {
+                            console.warn('[Snake] Phantom connect failed:', phantomErr.message);
+                        }
                     }
 
                     if (!pubkey) {
-                        if (/android/i.test(navigator.userAgent)) {
-                            alert('Connect with the device wallet (Seeker) or install Phantom from phantom.app');
-                        } else {
-                            alert('Please install Phantom wallet from phantom.app');
+                        // Better error message with actionable guidance
+                        const errorMsg = isAndroid || isInApp
+                            ? 'Unable to connect wallet. Make sure you\'re using the Seeker device wallet or install Phantom from phantom.app'
+                            : 'Please install Phantom wallet from phantom.app';
+                        
+                        console.error('[Snake] ❌ No wallet available:', {
+                            mwaAdapter: !!adapter,
+                            mwaReady: adapter?.ready,
+                            phantomAvailable: !!window.solana?.isPhantom,
+                            isAndroid,
+                            isInApp
+                        });
+                        
+                        // Show error but don't block - user can try again
+                        alert(errorMsg);
+                        if (!isAndroid && !isInApp) {
                             window.open('https://phantom.app/', '_blank');
                         }
                         return;
@@ -685,8 +730,8 @@
                     setSnsName(displayInfo.displayName);
                     console.log('✅ Wallet connected:', displayInfo.displayName);
                 } catch (err) {
-                    console.error('Connection error:', err);
-                    alert('Connection failed: ' + (err.message || String(err)));
+                    console.error('[Snake] Connection error:', err);
+                    alert('Connection failed: ' + (err.message || String(err)) + '. Please try again.');
                 }
             };
 
