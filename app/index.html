@@ -740,30 +740,52 @@
                             }
                         });
 
-                        const formatted = Object.values(bestScores)
-                            .sort((a, b) => scoreToApples(b.score) - scoreToApples(a.score))
-                            .slice(0, 100)
-                            .map((entry, idx) => ({
-                                rank: idx + 1,
-                                name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                                score: scoreToApples(entry.score),
-                                wallet: entry.wallet_address
-                            }));
+                        // Look up domains for all entries
+                        const entriesWithDomains = await Promise.all(
+                            Object.values(bestScores)
+                                .sort((a, b) => scoreToApples(b.score) - scoreToApples(a.score))
+                                .slice(0, 100)
+                                .map(async (entry, idx) => {
+                                    // Look up domain name for this wallet
+                                    const displayInfo = await getDisplayName(entry.wallet_address);
+                                    const displayName = displayInfo.hasDomain 
+                                        ? displayInfo.displayName 
+                                        : (entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`);
+                                    
+                                    return {
+                                        rank: idx + 1,
+                                        name: displayName,
+                                        score: scoreToApples(entry.score),
+                                        wallet: entry.wallet_address
+                                    };
+                                })
+                        );
 
-                        setLeaderboard(formatted);
+                        setLeaderboard(entriesWithDomains);
                     } else {
                         // RPC returns best_score already calculated
-                        const formatted = data
-                            .sort((a, b) => scoreToApples(b.best_score) - scoreToApples(a.best_score))
-                            .slice(0, 100)
-                            .map((entry, idx) => ({
-                                rank: idx + 1,
-                                name: entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`,
-                                score: scoreToApples(entry.best_score),
-                                wallet: entry.wallet_address
-                            }));
+                        // Look up domains for all entries
+                        const entriesWithDomains = await Promise.all(
+                            data
+                                .sort((a, b) => scoreToApples(b.best_score) - scoreToApples(a.best_score))
+                                .slice(0, 100)
+                                .map(async (entry, idx) => {
+                                    // Look up domain name for this wallet
+                                    const displayInfo = await getDisplayName(entry.wallet_address);
+                                    const displayName = displayInfo.hasDomain 
+                                        ? displayInfo.displayName 
+                                        : (entry.skr_name || `${entry.wallet_address.slice(0, 4)}...${entry.wallet_address.slice(-4)}`);
+                                    
+                                    return {
+                                        rank: idx + 1,
+                                        name: displayName,
+                                        score: scoreToApples(entry.best_score),
+                                        wallet: entry.wallet_address
+                                    };
+                                })
+                        );
 
-                        setLeaderboard(formatted);
+                        setLeaderboard(entriesWithDomains);
                     }
                 } catch (err) {
                     console.error('Failed to load leaderboard:', err);
