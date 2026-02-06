@@ -86,37 +86,105 @@ export default async function handler(req, res) {
       console.log('[API] getMainDomain failed:', mainDomainError.message);
     }
     
-    // Method 2: Get all .skr domains if main domain didn't work
+    // Method 2: Try getParsedAllUserDomainsFromTld (from CryptoKix gist)
     try {
       console.log('[API] Trying getParsedAllUserDomainsFromTld for .skr...');
       
-      const allDomainsPromise = parser.getParsedAllUserDomainsFromTld(owner, 'skr');
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('All domains timeout')), 10000)
-      );
-      
-      const skrDomains = await Promise.race([allDomainsPromise, timeoutPromise]);
-      
-      console.log('[API] All .skr domains result:', skrDomains);
-      
-      if (skrDomains && Array.isArray(skrDomains) && skrDomains.length > 0) {
-        const domainName = `${skrDomains[0]}.skr`;
-        console.log('[API] ✅ Found .skr domain from all domains:', domainName);
+      if (typeof parser.getParsedAllUserDomainsFromTld === 'function') {
+        const parsedDomainsPromise = parser.getParsedAllUserDomainsFromTld(owner, 'skr');
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Parsed domains timeout')), 10000)
+        );
         
-        return res.status(200).json({
-          success: true,
-          wallet: wallet,
-          domain: domainName,
-          isSeeker: true,
-          allDomains: skrDomains.map(d => `${d}.skr`),
-          method: 'getParsedAllUserDomainsFromTld'
-        });
+        const parsedDomains = await Promise.race([parsedDomainsPromise, timeoutPromise]);
+        
+        console.log('[API] Parsed .skr domains result:', parsedDomains);
+        
+        if (parsedDomains && Array.isArray(parsedDomains) && parsedDomains.length > 0) {
+          // parsedDomains should be an array of domain name strings or objects with domain property
+          const firstDomain = parsedDomains[0];
+          const domainName = typeof firstDomain === 'string' 
+            ? (firstDomain.endsWith('.skr') ? firstDomain : `${firstDomain}.skr`)
+            : (firstDomain.domain ? `${firstDomain.domain}.skr` : null);
+          
+          if (domainName) {
+            console.log('[API] ✅ Found .skr domain from parsed domains:', domainName);
+            
+            return res.status(200).json({
+              success: true,
+              wallet: wallet,
+              domain: domainName,
+              isSeeker: true,
+              allDomains: parsedDomains.map(d => 
+                typeof d === 'string' ? (d.endsWith('.skr') ? d : `${d}.skr`) : `${d.domain}.skr`
+              ),
+              method: 'getParsedAllUserDomainsFromTld'
+            });
+          }
+        }
+      } else {
+        console.log('[API] getParsedAllUserDomainsFromTld method not available');
+      }
+    } catch (parsedError) {
+      console.log('[API] getParsedAllUserDomainsFromTld failed:', parsedError.message);
+    }
+    
+    // Method 3: Try getAllUserDomainsFromTld (returns PublicKey accounts, need to parse)
+    try {
+      console.log('[API] Trying getAllUserDomainsFromTld for .skr...');
+      
+      if (typeof parser.getAllUserDomainsFromTld === 'function') {
+        const allDomainsPromise = parser.getAllUserDomainsFromTld(owner, 'skr');
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('All domains timeout')), 10000)
+        );
+        
+        const skrDomainAccounts = await Promise.race([allDomainsPromise, timeoutPromise]);
+        
+        console.log('[API] All .skr domain accounts result:', skrDomainAccounts);
+        
+        if (skrDomainAccounts && Array.isArray(skrDomainAccounts) && skrDomainAccounts.length > 0) {
+          // Try to reverse lookup domain names from account addresses
+          const domainNames = [];
+          for (const accountPubkey of skrDomainAccounts.slice(0, 5)) { // Limit to first 5
+            try {
+              // Try reverseLookupNameAccount if available
+              if (typeof parser.reverseLookupNameAccount === 'function') {
+                const domainInfo = await parser.reverseLookupNameAccount(accountPubkey, owner);
+                if (domainInfo && domainInfo.domain) {
+                  const fullDomain = `${domainInfo.domain}.${domainInfo.tld || 'skr'}`;
+                  if (fullDomain.endsWith('.skr')) {
+                    domainNames.push(fullDomain);
+                  }
+                }
+              }
+            } catch (e) {
+              console.log('[API] Failed to reverse lookup domain from account:', e.message);
+            }
+          }
+          
+          if (domainNames.length > 0) {
+            const domainName = domainNames[0];
+            console.log('[API] ✅ Found .skr domain from account reverse lookup:', domainName);
+            
+            return res.status(200).json({
+              success: true,
+              wallet: wallet,
+              domain: domainName,
+              isSeeker: true,
+              allDomains: domainNames,
+              method: 'getAllUserDomainsFromTld + reverseLookup'
+            });
+          }
+        }
+      } else {
+        console.log('[API] getAllUserDomainsFromTld method not available');
       }
       
-      console.log('[API] No .skr domains found');
+      console.log('[API] No .skr domains found from getAllUserDomainsFromTld');
       
     } catch (allDomainsError) {
-      console.log('[API] getParsedAllUserDomainsFromTld failed:', allDomainsError.message);
+      console.log('[API] getAllUserDomainsFromTld failed:', allDomainsError.message);
     }
     
     // No .skr domain found
