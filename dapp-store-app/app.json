@@ -12,8 +12,12 @@
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
-    "assetBundlePatterns": ["**/*"],
-    "plugins": [],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      "expo-secure-store"
+    ],
     "android": {
       "package": "com.snake.solana.dapp",
       "adaptiveIcon": {
@@ -28,10 +32,7 @@
     },
     "owner": "jonaskroeger",
     "ios": {
-      "bundleIdentifier": "com.snake.solana.dapp",
-      "infoPlist": {
-        "NSFaceIDUsageDescription": "Confirm with face or fingerprint to connect your wallet"
-      }
+      "bundleIdentifier": "com.snake.solana.dapp"
     }
   }
 }

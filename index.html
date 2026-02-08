@@ -278,6 +278,27 @@
             font-weight: 500;
             min-width: 140px;
         }
+        .skin-swatches {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .skin-swatch {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            cursor: pointer;
+            padding: 0;
+            transition: transform 0.15s, border-color 0.15s;
+        }
+        .skin-swatch:hover {
+            transform: scale(1.1);
+        }
+        .skin-swatch.active {
+            border-color: #fff;
+            box-shadow: 0 0 0 1px #333;
+        }
         .leaderboard-container {
             width: 100%;
             max-width: 600px;
@@ -366,6 +387,16 @@
         const GRID_SIZE = 20;
         const INITIAL_SNAKE = [{x: 10, y: 10}];
         const INITIAL_DIRECTION = {x: 1, y: 0};
+
+        const SNAKE_SKINS = {
+            blue: '#3B82F6',
+            orange: '#F97316',
+            yellow: '#EAB308',
+            green: '#14F195',
+            indigo: '#6366F1',
+            violet: '#8B5CF6'
+        };
+        const SNAKE_SKIN_IDS = Object.keys(SNAKE_SKINS);
 
         const audioContext = typeof AudioContext !== 'undefined' ? new AudioContext() : null;
 
@@ -478,12 +509,17 @@
             const [speedBoost, setSpeedBoost] = useState(false);
             const [timer, setTimer] = useState(60);
             
-            const [settings, setSettings] = useState({
-                sound: true,
-                vibration: true,
-                difficulty: 'medium',
-                gameMode: 'classic'
+            const [settings, setSettings] = useState(() => {
+                const defaults = { sound: true, vibration: true, difficulty: 'medium', gameMode: 'classic', snakeColor: 'green' };
+                try {
+                    const s = localStorage.getItem('snakeSettings');
+                    if (s) return { ...defaults, ...JSON.parse(s) };
+                } catch (_) {}
+                return defaults;
             });
+            useEffect(() => {
+                try { localStorage.setItem('snakeSettings', JSON.stringify(settings)); } catch (_) {}
+            }, [settings]);
 
             const [wallet, setWallet] = useState(null);
             const [snsName, setSnsName] = useState(null);
@@ -1047,7 +1083,8 @@
                     });
                 }
 
-                ctx.fillStyle = speedBoost ? '#FFD700' : '#14F195';
+                const snakeColor = SNAKE_SKINS[settings.snakeColor] || SNAKE_SKINS.green;
+                ctx.fillStyle = speedBoost ? '#FFD700' : snakeColor;
                 snake.forEach((segment) => {
                     ctx.fillRect(segment.x * cellSize + 1, segment.y * cellSize + 1, cellSize - 2, cellSize - 2);
                 });
@@ -1060,7 +1097,7 @@
                     cellSize / 2 - 2, 0, Math.PI * 2
                 );
                 ctx.fill();
-            }, [snake, food, obstacles, speedBoost, cellSize]);
+            }, [snake, food, obstacles, speedBoost, cellSize, settings.snakeColor]);
 
             if (screen === 'menu') {
                 return (
@@ -1156,6 +1193,22 @@
                                     <option value="speed">Speed</option>
                                     <option value="survival">Survival</option>
                                 </select>
+                            </div>
+
+                            <div className="setting-row">
+                                <div className="setting-name">Snake color</div>
+                                <div className="skin-swatches">
+                                    {SNAKE_SKIN_IDS.map((id) => (
+                                        <button
+                                            key={id}
+                                            type="button"
+                                            className={`skin-swatch ${settings.snakeColor === id ? 'active' : ''}`}
+                                            style={{ backgroundColor: SNAKE_SKINS[id] }}
+                                            title={id}
+                                            onClick={() => setSettings({...settings, snakeColor: id})}
+                                        />
+                                    ))}
+                                </div>
                             </div>
 
                             <button className="menu-button" style={{marginTop: '40px'}} onClick={() => setScreen('menu')}>

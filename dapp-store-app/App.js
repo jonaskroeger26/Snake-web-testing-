@@ -20,7 +20,7 @@ const webCrypto = typeof crypto !== 'undefined' ? crypto : new Crypto();
 })();
 
 import * as SplashScreen from 'expo-splash-screen';
-import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, Text, Dimensions, Platform, Modal } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -42,6 +42,20 @@ const APP_IDENTITY = {
   icon: 'icons/icon.svg',
 };
 
+const SESSION_KEY = 'snake_mwa_session';
+
+function addressFromAccount(account) {
+  let address = account?.address;
+  if (typeof address === 'string') {
+    try {
+      const bytes = Buffer.from(address, 'base64');
+      if (bytes.length === 32) return new PublicKey(bytes).toBase58();
+    } catch (_) {}
+  }
+  if (address && typeof address !== 'string') address = new PublicKey(address).toBase58();
+  return typeof address === 'string' ? address : String(address || '');
+}
+
 export default function App() {
   const webViewRef = useRef(null);
 
@@ -55,75 +69,121 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  const getStoredSession = async () => {
+    try {
+      const raw = await SecureStore.getItemAsync(SESSION_KEY);
+      if (!raw) return null;
+      const session = JSON.parse(raw);
+      if (session?.address && session?.authToken) return session;
+    } catch (_) {}
+    return null;
+  };
+
+  const setStoredSession = async (address, authToken) => {
+    try {
+      await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify({ address, authToken }));
+    } catch (e) {
+      console.warn('[Expo] Failed to store session:', e);
+    }
+  };
+
+  const clearStoredSession = async () => {
+    try {
+      await SecureStore.deleteItemAsync(SESSION_KEY);
+    } catch (_) {}
+  };
+
+  const injectConnected = (addressStr) => {
+    const script = `
+      (function() {
+        var addr = '${addressStr}';
+        if (window.__snakeWalletAdapter) {
+          window.__snakeWalletAdapter.connectedAccount = { address: addr };
+          window.__snakeWalletAdapter.connectedWallet = { name: 'Mobile Wallet Adapter' };
+          window.__snakeWalletAdapter.ready = true;
+          window.dispatchEvent(new CustomEvent('snakeMWAConnected', { detail: { address: addr } }));
+        }
+      })();
+    `;
+    webViewRef.current?.injectJavaScript(script);
+  };
+
+  const injectDisconnected = () => {
+    const script = `
+      (function() {
+        if (window.__snakeWalletAdapter) {
+          window.__snakeWalletAdapter.connectedAccount = null;
+          window.__snakeWalletAdapter.connectedWallet = null;
+          window.dispatchEvent(new CustomEvent('snakeMWADisconnected'));
+        }
+      })();
+    `;
+    webViewRef.current?.injectJavaScript(script);
+  };
+
   const connectMWA = async () => {
     try {
-      console.log('[Expo] Starting MWA connection...');
-      // Use MWA 2.0 authorize params (chain + identity). Mainnet for Seeker/production.
+      const stored = await getStoredSession();
+
+      // If we have a stored session, try to re-authorize with auth_token (no sign-in prompt).
+      if (stored?.address && stored?.authToken) {
+        try {
+          console.log('[Expo] Re-authorizing with stored session...');
+          const result = await transact(async (wallet) => {
+            return await wallet.authorize({
+              identity: APP_IDENTITY,
+              chain: 'solana:mainnet-beta',
+              auth_token: stored.authToken,
+            });
+          });
+          if (result?.accounts?.length > 0 && result?.auth_token) {
+            const address = addressFromAccount(result.accounts[0]);
+            await setStoredSession(address, result.auth_token);
+            injectConnected(address.replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+            return address;
+          }
+        } catch (e) {
+          console.log('[Expo] Stored session invalid, will do full sign-in:', e?.message);
+          await clearStoredSession();
+        }
+      }
+
+      // First-time or invalid session: require Sign in with Solana (signature) then persist.
+      console.log('[Expo] First-time connect – Sign in with Solana (signature required)...');
       const result = await transact(async (wallet) => {
-        console.log('[Expo] Authorizing with wallet...');
-        const authResult = await wallet.authorize({
+        return await wallet.authorize({
           identity: APP_IDENTITY,
           chain: 'solana:mainnet-beta',
+          sign_in_payload: {
+            domain: 'snake-web-phi.vercel.app',
+            statement: 'Sign to connect Snake - Solana to your wallet. This proves you control the address.',
+            uri: 'https://snake-web-phi.vercel.app',
+          },
         });
-        console.log('[Expo] Authorization result:', authResult);
-        return authResult;
       });
 
       if (!result?.accounts || result.accounts.length === 0) {
         throw new Error('No accounts returned from wallet');
       }
+      const address = addressFromAccount(result.accounts[0]);
+      const authToken = result.auth_token;
+      if (authToken) await setStoredSession(address, authToken);
 
-      // Protocol returns address as base64; decode to base58 for display/API
-      let address = result.accounts[0].address;
-      if (typeof address === 'string') {
-        try {
-          const bytes = Buffer.from(address, 'base64');
-          if (bytes.length === 32) {
-            address = new PublicKey(bytes).toBase58();
-          }
-        } catch (_) {
-          // already base58 or other format
-        }
-      }
-      if (typeof address !== 'string' && address && address.length) {
-        address = new PublicKey(address).toBase58();
-      } else if (typeof address !== 'string') {
-        address = String(address);
-      }
       const addressStr = address.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-      console.log('[Expo] ✅ Connected, address:', address);
-
-      const script = `
-        (function() {
-          var addr = '${addressStr}';
-          console.log('[MWA Bridge] Injecting connection result:', addr);
-          if (window.__snakeWalletAdapter) {
-            window.__snakeWalletAdapter.connectedAccount = { address: addr };
-            window.__snakeWalletAdapter.connectedWallet = { name: 'Mobile Wallet Adapter' };
-            window.__snakeWalletAdapter.ready = true;
-            window.dispatchEvent(new CustomEvent('snakeMWAConnected', { detail: { address: addr } }));
-            console.log('[MWA Bridge] ✅ Connection event dispatched');
-          } else {
-            console.error('[MWA Bridge] ❌ __snakeWalletAdapter not found!');
-          }
-        })();
-      `;
-      webViewRef.current?.injectJavaScript(script);
+      injectConnected(addressStr);
       return address;
     } catch (error) {
       console.error('[Expo] ❌ MWA connect error:', error);
-      // Minty-fresh pattern: handle "no wallet" explicitly with a clear user message
       const isNoWallet =
         error?.code === (SolanaMobileWalletAdapterErrorCode && SolanaMobileWalletAdapterErrorCode.ERROR_WALLET_NOT_FOUND) ||
         error?.code === 'ERROR_WALLET_NOT_FOUND' ||
         (error?.message && /no installed wallet|wallet not found/i.test(error.message));
       const errorMessage = isNoWallet
         ? 'No wallet found. Please use the Seeker device wallet or install a compatible wallet.'
-        : (error.message || String(error));
+        : (error?.message || String(error));
       const escaped = errorMessage.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       const errorScript = `
         (function() {
-          console.error('[MWA Bridge] Injecting error:', '${escaped}');
           window.dispatchEvent(new CustomEvent('snakeMWAError', { detail: { error: '${escaped}' } }));
         })();
       `;
@@ -235,31 +295,22 @@ export default function App() {
 
   const handleMessage = async (event) => {
     try {
-      console.log('[Expo] Received message from WebView:', event.nativeEvent.data);
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'connect') {
-        console.log('[Expo] Connect requested – requiring biometric...');
-        const hasHardware = await LocalAuthentication.hasHardwareAsync();
-        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-        if (!hasHardware || !isEnrolled) {
-          const errMsg = 'Biometric (fingerprint/face) is not set up on this device. Please add it in device settings.';
-          injectError(errMsg);
-          return;
-        }
-        const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: 'Confirm with fingerprint or face to connect wallet',
-          cancelLabel: 'Cancel',
-          disableDeviceFallback: false,
-        });
-        if (!result.success) {
-          const errMsg = result.error === 'user_cancel' ? 'Connection cancelled' : 'Biometric verification failed';
-          injectError(errMsg);
-          return;
-        }
-        console.log('[Expo] Biometric OK – starting wallet connection...');
+        console.log('[Expo] Connect requested – connecting via MWA (Seeker/Seed Vault)...');
         connectMWA().catch((err) => {
           console.error('[Expo] Connect failed:', err);
+          injectError(err?.message || 'Connection failed');
         });
+      } else if (data.type === 'disconnect') {
+        const session = await getStoredSession();
+        await clearStoredSession();
+        if (session?.authToken) {
+          try {
+            await transact((wallet) => wallet.deauthorize({ auth_token: session.authToken }));
+          } catch (_) {}
+        }
+        injectDisconnected();
       } else {
         console.log('[Expo] Unknown message type:', data.type);
       }
@@ -341,8 +392,14 @@ export default function App() {
           console.log('[WebView] Load finished');
           // Re-inject bridge after a short delay so it runs after mwa-bundle.js and overwrites connect
           if (!TEST_WEBVIEW_WITH_HTML && webViewRef.current) {
-            setTimeout(() => {
+            setTimeout(async () => {
               webViewRef.current?.injectJavaScript(injectedJavaScript);
+              // Restore persisted session so user stays connected until they sign out
+              const session = await getStoredSession();
+              if (session?.address) {
+                const addressStr = session.address.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                setTimeout(() => injectConnected(addressStr), 100);
+              }
             }, 300);
           }
         }}
