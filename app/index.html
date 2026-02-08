@@ -1308,14 +1308,12 @@
                     ctx.fillRect(segment.x * CELL_SIZE + 1, segment.y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
                 });
 
-                ctx.fillStyle = '#9945FF';
-                ctx.beginPath();
-                ctx.arc(
-                    food.x * CELL_SIZE + CELL_SIZE / 2,
-                    food.y * CELL_SIZE + CELL_SIZE / 2,
-                    CELL_SIZE / 2 - 2, 0, Math.PI * 2
-                );
-                ctx.fill();
+                const foodCenterX = food.x * CELL_SIZE + CELL_SIZE / 2;
+                const foodCenterY = food.y * CELL_SIZE + CELL_SIZE / 2;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = `${CELL_SIZE - 2}px sans-serif`;
+                ctx.fillText('🍎', foodCenterX, foodCenterY);
             }, [snake, food, obstacles, speedBoost, settings.snakeColor]);
 
             if (screen === 'menu') {

@@ -1073,14 +1073,12 @@
                     ctx.fillRect(segment.x * cellSize + 1, segment.y * cellSize + 1, cellSize - 2, cellSize - 2);
                 });
 
-                ctx.fillStyle = '#9945FF';
-                ctx.beginPath();
-                ctx.arc(
-                    food.x * cellSize + cellSize / 2,
-                    food.y * cellSize + cellSize / 2,
-                    cellSize / 2 - 2, 0, Math.PI * 2
-                );
-                ctx.fill();
+                const foodCenterX = food.x * cellSize + cellSize / 2;
+                const foodCenterY = food.y * cellSize + cellSize / 2;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = `${cellSize - 2}px sans-serif`;
+                ctx.fillText('🍎', foodCenterX, foodCenterY);
             }, [snake, food, obstacles, speedBoost, cellSize, settings.snakeColor]);
 
             if (screen === 'menu') {
