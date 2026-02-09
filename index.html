@@ -366,10 +366,22 @@
             font-size: 0.9em;
             margin-top: 15px;
         }
+        .copyright-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            padding: 10px 14px;
+            color: #fff;
+            font-size: 12px;
+            font-family: 'Space Grotesk', monospace;
+            z-index: 9999;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
+    <div class="copyright-footer">© solanasnake.com</div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
