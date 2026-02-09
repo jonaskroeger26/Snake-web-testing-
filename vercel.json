@@ -4,8 +4,8 @@
     {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate"}]}
   ],
   "rewrites": [
-    {"source": "/privacy", "destination": "/app/privacy.html"},
-    {"source": "/license", "destination": "/app/license.html"},
-    {"source": "/copyright", "destination": "/app/copyright.html"}
+    {"source": "/privacy", "destination": "/privacy.html"},
+    {"source": "/license", "destination": "/license.html"},
+    {"source": "/copyright", "destination": "/copyright.html"}
   ]
 }
