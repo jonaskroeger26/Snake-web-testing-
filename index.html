@@ -440,17 +440,18 @@
         const SNAKE_SKIN_IDS = Object.keys(SNAKE_SKINS);
 
         // Level mode: collect targetApples to win. Stars by time: 3 = fast, 2 = medium, 1 = slow.
+        // All layouts are open (no closed boxes) so the snake can reach every cell.
         const LEVELS = [
             { id: 1, name: 'First Bite', targetApples: 5, star3Time: 12, star2Time: 20, obstacles: [] },
-            { id: 2, name: 'Cornered', targetApples: 8, star3Time: 18, star2Time: 30, obstacles: [{x:0,y:0},{x:1,y:0},{x:0,y:1}, {x:19,y:0},{x:18,y:0},{x:19,y:1}, {x:0,y:19},{x:0,y:18},{x:1,y:19}, {x:19,y:19},{x:19,y:18},{x:18,y:19}] },
-            { id: 3, name: 'The Gauntlet', targetApples: 10, star3Time: 25, star2Time: 45, obstacles: [].concat([8,9,10,11].map(x=>[{x,y:8},{x,y:11}]).flat()) },
-            { id: 4, name: 'Boxed In', targetApples: 12, star3Time: 35, star2Time: 55, obstacles: [].concat([5,6,7,8,9,10,11,12,13,14].map(y=>[{x:5,y},{x:14,y}]).flat(), [6,7,8,9,10,11,12,13].map(x=>[{x,y:5},{x,y:14}]).flat()) },
-            { id: 5, name: 'Maze Runner', targetApples: 15, star3Time: 45, star2Time: 70, obstacles: [].concat([2,3,4,5,6,7].map(x=>[{x,y:4},{x,y:15}]).flat(), [13,14,15,16,17].map(x=>[{x,y:6},{x,y:13}]).flat(), [4,5,6,7,8,9,10].map(y=>[{x:9,y},{x:10,y}]).flat()) },
-            { id: 6, name: 'Snake Pit', targetApples: 18, star3Time: 55, star2Time: 85, obstacles: [].concat([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19].map(x=>[{x,y:9},{x,y:10}]).flat()) },
-            { id: 7, name: 'Double Trouble', targetApples: 20, star3Time: 60, star2Time: 95, obstacles: [].concat([3,4,5,6,7,8,9,10,11,12,13,14,15,16].map(y=>[{x:7,y},{x:12,y}]).flat()) },
-            { id: 8, name: 'Narrow Pass', targetApples: 22, star3Time: 70, star2Time: 110, obstacles: [].concat([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(y=>[{x:4,y},{x:5,y},{x:14,y},{x:15,y}]).flat()) },
-            { id: 9, name: 'Chaos Grid', targetApples: 25, star3Time: 80, star2Time: 125, obstacles: [].concat([2,4,6,8,10,12,16,18].map(x=>[{x,y:2},{x,y:6},{x,y:12},{x,y:16}]).flat(), [3,5,7,9,11,13,15,17].map(y=>[{x:3,y},{x:7,y},{x:11,y},{x:17,y}]).flat()) },
-            { id: 10, name: 'Final Boss', targetApples: 30, star3Time: 95, star2Time: 150, obstacles: [].concat([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19].map(x=>[{x,y:4},{x,y:15}]).flat(), [5,6,7,8,9,10,11,12,13,14].map(y=>[{x:9,y},{x:10,y}]).flat()) }
+            { id: 2, name: 'Cornered', targetApples: 8, star3Time: 18, star2Time: 30, obstacles: [{x:0,y:0},{x:1,y:0},{x:0,y:1},{x:19,y:0},{x:18,y:0},{x:19,y:1},{x:0,y:19},{x:0,y:18},{x:1,y:19},{x:19,y:19},{x:19,y:18},{x:18,y:19}] },
+            { id: 3, name: 'The Gauntlet', targetApples: 10, star3Time: 25, star2Time: 45, obstacles: [].concat([0,1,2,3,4,5,6,7].map(x=>[{x,y:8},{x,y:11}]).flat(), [12,13,14,15,16,17,18,19].map(x=>[{x,y:8},{x,y:11}]).flat()) },
+            { id: 4, name: 'Pinch Points', targetApples: 12, star3Time: 35, star2Time: 55, obstacles: [].concat([2,3,4,5,6,7].map(y=>[{x:7,y},{x:12,y}]).flat(), [12,13,14,15,16,17].map(y=>[{x:7,y},{x:12,y}]).flat()) },
+            { id: 5, name: 'Maze Runner', targetApples: 15, star3Time: 45, star2Time: 70, obstacles: [].concat([2,3,4,5,6].map(x=>[{x,y:4},{x,y:15}]).flat(), [14,15,16,17,18].map(x=>[{x,y:4},{x,y:15}]).flat(), [4,5,6,7,8].map(y=>[{x:9,y},{x:10,y}]).flat(), [11,12,13,14,15].map(y=>[{x:9,y},{x:10,y}]).flat()) },
+            { id: 6, name: 'Split Lane', targetApples: 18, star3Time: 55, star2Time: 85, obstacles: [].concat([0,1,2,3,4,5,6,7,8].map(x=>[{x,y:9},{x,y:10}]).flat(), [11,12,13,14,15,16,17,18,19].map(x=>[{x,y:9},{x,y:10}]).flat()) },
+            { id: 7, name: 'Double Trouble', targetApples: 20, star3Time: 60, star2Time: 95, obstacles: [].concat([3,4,5,6,7,8].map(y=>[{x:7,y},{x:12,y}]).flat(), [11,12,13,14,15,16].map(y=>[{x:7,y},{x:12,y}]).flat()) },
+            { id: 8, name: 'Narrow Pass', targetApples: 22, star3Time: 70, star2Time: 110, obstacles: [].concat([2,3,4,5,6,7,8,9].map(y=>[{x:4,y},{x:5,y},{x:14,y},{x:15,y}]).flat(), [10,11,12,13,14,15,16,17].map(y=>[{x:4,y},{x:5,y},{x:14,y},{x:15,y}]).flat()) },
+            { id: 9, name: 'Pillar Garden', targetApples: 25, star3Time: 80, star2Time: 125, obstacles: [3,7,11,15].flatMap(x=>[4,8,12,16].map(y=>({x,y}))).concat([5,9,13,17].flatMap(x=>[5,10,14].map(y=>({x,y})))) },
+            { id: 10, name: 'Final Boss', targetApples: 30, star3Time: 95, star2Time: 150, obstacles: [].concat([0,1,2,3,4,5,6,7].map(x=>[{x,y:4},{x,y:15}]).flat(), [12,13,14,15,16,17,18,19].map(x=>[{x,y:4},{x,y:15}]).flat(), [5,6,7,8].map(y=>[{x:9,y},{x:10,y}]).flat(), [11,12,13,14].map(y=>[{x:9,y},{x:10,y}]).flat()) }
         ];
 
         const audioContext = typeof AudioContext !== 'undefined' ? new AudioContext() : null;
