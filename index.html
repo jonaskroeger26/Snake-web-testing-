@@ -927,6 +927,11 @@
                 if (newDirection.x === -currentDir.x && newDirection.y === -currentDir.y) return;
                 directionRef.current = newDirection;
                 setDirection(newDirection);
+                const body = snakeRef.current;
+                if (body && body.length > 0) {
+                    lastHeadRef.current = { x: body[0].x, y: body[0].y };
+                    lastTickRef.current = Date.now();
+                }
                 vibrate(10);
             };
 
