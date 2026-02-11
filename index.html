@@ -615,7 +615,7 @@
             const gameSessionRef = useRef({ gameMode: 'classic', difficulty: 'medium' });
 
             const GAME_SPEEDS = { easy: 150, medium: 120, hard: 85, turbo: 60 };
-            const TURN_RESPONSE_MS = 50; // max ms from keypress to move (keeps smoothness, cuts delay)
+            const TURN_RESPONSE_MS = 35; // max ms from keypress to move (keeps smoothness, cuts delay)
 
             // Calculate cell size based on viewport
             useEffect(() => {
