@@ -702,7 +702,7 @@
             const lastTickRef = useRef(Date.now());
             const gameSessionRef = useRef({ gameMode: 'classic', difficulty: 'medium' });
 
-            const GAME_SPEEDS = { easy: 150, medium: 120, hard: 85, turbo: 60 };
+            const GAME_SPEEDS = { easy: 150, medium: 120, hard: 85 };
 
             // Calculate cell size based on viewport
             useEffect(() => {
@@ -1207,7 +1207,7 @@
 
             useEffect(() => {
                 if (screen === 'playing') {
-                    let speed = GAME_SPEEDS[settings.difficulty];
+                    let speed = GAME_SPEEDS[settings.difficulty] ?? GAME_SPEEDS.hard;
                     if (settings.gameMode === 'speed' && speedBoost) {
                         speed = Math.max(speed - 50, 50);
                     }
@@ -1309,7 +1309,7 @@
                 const canvas = canvasRef.current;
                 if (!canvas) return;
                 const ctx = canvas.getContext('2d');
-                let interval = GAME_SPEEDS[settings.difficulty];
+                let interval = GAME_SPEEDS[settings.difficulty] ?? GAME_SPEEDS.hard;
                 if (settings.gameMode === 'speed' && speedBoost) interval = Math.max(interval - 50, 50);
 
                 function draw() {
@@ -1449,7 +1449,6 @@
                                         <option value="easy">Easy</option>
                                         <option value="medium">Medium</option>
                                         <option value="hard">Hard</option>
-                                        <option value="turbo">Turbo</option>
                                     </select>
                                 </div>
                             </div>
@@ -1600,7 +1599,6 @@
                                     <option value="easy">Easy</option>
                                     <option value="medium">Medium</option>
                                     <option value="hard">Hard</option>
-                                    <option value="turbo">Turbo</option>
                                 </select>
                             </div>
                             
