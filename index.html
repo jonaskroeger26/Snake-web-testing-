@@ -1117,11 +1117,11 @@
 
             const checkCollision = useCallback((head) => {
                 if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
-                    if (settings.gameMode !== 'portal') return true;
+                    if (levelId || settings.gameMode !== 'portal') return true;
                 }
                 if (obstacles.some(obs => obs.x === head.x && obs.y === head.y)) return true;
                 return false;
-            }, [obstacles, settings.gameMode]);
+            }, [obstacles, settings.gameMode, levelId]);
 
             const gameLoop = useCallback(() => {
                 const body = snakeRef.current;
