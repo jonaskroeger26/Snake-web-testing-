@@ -366,6 +366,35 @@
             font-size: 0.9em;
             margin-top: 15px;
         }
+        .levels-container {
+            width: 100%;
+            max-width: 520px;
+            padding: 24px;
+        }
+        .levels-title { font-size: 1.8em; margin-bottom: 8px; }
+        .levels-subtitle { color: #666; font-size: 0.9em; margin-bottom: 24px; }
+        .levels-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+        .level-card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 10px;
+            padding: 14px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .level-card:hover:not(.locked) { border-color: #14F195; background: #222; }
+        .level-card.locked { opacity: 0.5; cursor: not-allowed; }
+        .level-card .level-num { font-size: 1.1em; font-weight: 700; color: #14F195; margin-bottom: 4px; }
+        .level-card .level-name { font-size: 0.7em; color: #999; line-height: 1.2; margin-bottom: 6px; }
+        .level-stars { font-size: 0.85em; color: #EAB308; letter-spacing: 1px; }
+        .level-stars.empty { color: #444; }
+        .level-complete-stars { font-size: 2em; color: #EAB308; margin: 12px 0; letter-spacing: 4px; }
         .copyright-footer {
             position: fixed;
             bottom: 0;
@@ -409,6 +438,20 @@
             violet: '#8B5CF6'
         };
         const SNAKE_SKIN_IDS = Object.keys(SNAKE_SKINS);
+
+        // Level mode: collect targetApples to win. Stars by time: 3 = fast, 2 = medium, 1 = slow.
+        const LEVELS = [
+            { id: 1, name: 'First Bite', targetApples: 5, star3Time: 12, star2Time: 20, obstacles: [] },
+            { id: 2, name: 'Cornered', targetApples: 8, star3Time: 18, star2Time: 30, obstacles: [{x:0,y:0},{x:1,y:0},{x:0,y:1}, {x:19,y:0},{x:18,y:0},{x:19,y:1}, {x:0,y:19},{x:0,y:18},{x:1,y:19}, {x:19,y:19},{x:19,y:18},{x:18,y:19}] },
+            { id: 3, name: 'The Gauntlet', targetApples: 10, star3Time: 25, star2Time: 45, obstacles: [].concat([8,9,10,11].map(x=>[{x,y:8},{x,y:11}]).flat()) },
+            { id: 4, name: 'Boxed In', targetApples: 12, star3Time: 35, star2Time: 55, obstacles: [].concat([5,6,7,8,9,10,11,12,13,14].map(y=>[{x:5,y},{x:14,y}]).flat(), [6,7,8,9,10,11,12,13].map(x=>[{x,y:5},{x,y:14}]).flat()) },
+            { id: 5, name: 'Maze Runner', targetApples: 15, star3Time: 45, star2Time: 70, obstacles: [].concat([2,3,4,5,6,7].map(x=>[{x,y:4},{x,y:15}]).flat(), [13,14,15,16,17].map(x=>[{x,y:6},{x,y:13}]).flat(), [4,5,6,7,8,9,10].map(y=>[{x:9,y},{x:10,y}]).flat()) },
+            { id: 6, name: 'Snake Pit', targetApples: 18, star3Time: 55, star2Time: 85, obstacles: [].concat([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19].map(x=>[{x,y:9},{x,y:10}]).flat()) },
+            { id: 7, name: 'Double Trouble', targetApples: 20, star3Time: 60, star2Time: 95, obstacles: [].concat([3,4,5,6,7,8,9,10,11,12,13,14,15,16].map(y=>[{x:7,y},{x:12,y}]).flat()) },
+            { id: 8, name: 'Narrow Pass', targetApples: 22, star3Time: 70, star2Time: 110, obstacles: [].concat([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(y=>[{x:4,y},{x:5,y},{x:14,y},{x:15,y}]).flat()) },
+            { id: 9, name: 'Chaos Grid', targetApples: 25, star3Time: 80, star2Time: 125, obstacles: [].concat([2,4,6,8,10,12,16,18].map(x=>[{x,y:2},{x,y:6},{x,y:12},{x,y:16}]).flat(), [3,5,7,9,11,13,15,17].map(y=>[{x:3,y},{x:7,y},{x:11,y},{x:17,y}]).flat()) },
+            { id: 10, name: 'Final Boss', targetApples: 30, star3Time: 95, star2Time: 150, obstacles: [].concat([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19].map(x=>[{x,y:4},{x,y:15}]).flat(), [5,6,7,8,9,10,11,12,13,14].map(y=>[{x:9,y},{x:10,y}]).flat()) }
+        ];
 
         const audioContext = typeof AudioContext !== 'undefined' ? new AudioContext() : null;
 
@@ -541,6 +584,17 @@
             const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
             const [connectingWallet, setConnectingWallet] = useState(false);
             const [cellSize, setCellSize] = useState(24);
+
+            const LEVEL_STARS_KEY = 'snakeLevelStars';
+            const [levelStars, setLevelStars] = useState(() => {
+                try {
+                    const raw = localStorage.getItem(LEVEL_STARS_KEY);
+                    return raw ? JSON.parse(raw) : {};
+                } catch (_) { return {}; }
+            });
+            const [levelId, setLevelId] = useState(null);
+            const [levelCompleteTime, setLevelCompleteTime] = useState(0);
+            const levelStartTimeRef = useRef(0);
 
             const canvasRef = useRef(null);
             const gameLoopRef = useRef(null);
@@ -866,6 +920,7 @@
             };
 
             const startGame = () => {
+                setLevelId(null);
                 gameSessionRef.current = { gameMode: settings.gameMode, difficulty: settings.difficulty };
                 setSnake(INITIAL_SNAKE);
                 snakeRef.current = INITIAL_SNAKE;
@@ -883,6 +938,34 @@
                 }
                 
                 setScreen('playing');
+            };
+
+            const startLevel = (id) => {
+                const level = LEVELS[id - 1];
+                if (!level) return;
+                gameSessionRef.current = { gameMode: 'classic', difficulty: settings.difficulty, levelId: id };
+                setLevelId(id);
+                levelStartTimeRef.current = Date.now();
+                setSnake(INITIAL_SNAKE);
+                snakeRef.current = INITIAL_SNAKE;
+                setDirection(INITIAL_DIRECTION);
+                directionRef.current = INITIAL_DIRECTION;
+                setObstacles(level.obstacles || []);
+                setFoodEaten(0);
+                setSpeedBoost(false);
+                setTimer(60);
+                setScreen('playing');
+                setFood(() => {
+                    let newFood;
+                    let attempts = 0;
+                    const obs = level.obstacles || [];
+                    const snakePos = INITIAL_SNAKE;
+                    do {
+                        newFood = { x: Math.floor(Math.random() * GRID_SIZE), y: Math.floor(Math.random() * GRID_SIZE) };
+                        attempts++;
+                    } while (attempts < 100 && (obs.some(o => o.x === newFood.x && o.y === newFood.y) || snakePos.some(s => s.x === newFood.x && s.y === newFood.y)));
+                    return newFood;
+                });
             };
 
             const submitScore = async (finalFoodCount) => {
@@ -940,7 +1023,7 @@
                     y: body[0].y + directionRef.current.y
                 };
 
-                if (settings.gameMode === 'portal') {
+                if (settings.gameMode === 'portal' && !levelId) {
                     if (head.x < 0) head.x = GRID_SIZE - 1;
                     if (head.x >= GRID_SIZE) head.x = 0;
                     if (head.y < 0) head.y = GRID_SIZE - 1;
@@ -981,6 +1064,7 @@
                 let newSnake = [head, ...body];
 
                 if (head.x === food.x && head.y === food.y) {
+                    const newCount = foodEaten + 1;
                     setFoodEaten(f => f + 1);
                     setFood(generateFood());
                     if (settings.sound) playSound(800, 0.1, 0.2);
@@ -989,13 +1073,26 @@
                         setSpeedBoost(true);
                         setTimeout(() => setSpeedBoost(false), 3000);
                     }
+                    if (levelId && newCount >= LEVELS[levelId - 1].targetApples) {
+                        if (gameLoopRef.current) { clearInterval(gameLoopRef.current); gameLoopRef.current = null; }
+                        const elapsed = (Date.now() - levelStartTimeRef.current) / 1000;
+                        const lev = LEVELS[levelId - 1];
+                        const stars = elapsed <= lev.star3Time ? 3 : elapsed <= lev.star2Time ? 2 : 1;
+                        setLevelCompleteTime(elapsed);
+                        setLevelStars(prev => {
+                            const next = { ...prev, [levelId]: Math.max(prev[levelId] || 0, stars) };
+                            try { localStorage.setItem(LEVEL_STARS_KEY, JSON.stringify(next)); } catch (_) {}
+                            return next;
+                        });
+                        setScreen('levelComplete');
+                    }
                 } else {
                     newSnake.pop();
                 }
 
                 snakeRef.current = newSnake;
                 setSnake(newSnake);
-            }, [food, checkCollision, foodEaten, generateFood, settings.sound, settings.vibration, settings.gameMode]);
+            }, [food, checkCollision, foodEaten, generateFood, settings.sound, settings.vibration, settings.gameMode, levelId]);
 
             useEffect(() => {
                 if (screen === 'playing') {
@@ -1121,6 +1218,9 @@
                             <button className="menu-button" onClick={startGame}>
                                 START GAME
                             </button>
+                            <button className="menu-button secondary" onClick={() => setScreen('levels')}>
+                                LEVELS
+                            </button>
                             <button className="menu-button secondary" onClick={() => setScreen('settings')}>
                                 SETTINGS
                             </button>
@@ -1146,6 +1246,39 @@
                                     {snsName || '...loading'}
                                 </div>
                             )}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (screen === 'levels') {
+                return (
+                    <div className="fullscreen">
+                        <div className="levels-container">
+                            <div className="levels-title">LEVELS</div>
+                            <div className="levels-subtitle">Collect apples to finish. 3★ fast, 2★ medium, 1★ complete.</div>
+                            <div className="levels-grid">
+                                {LEVELS.map((lev) => {
+                                    const unlocked = lev.id === 1 || (levelStars[lev.id - 1] !== undefined && levelStars[lev.id - 1] > 0);
+                                    const stars = levelStars[lev.id] || 0;
+                                    return (
+                                        <div
+                                            key={lev.id}
+                                            className={`level-card ${unlocked ? '' : 'locked'}`}
+                                            onClick={() => unlocked && startLevel(lev.id)}
+                                        >
+                                            <div className="level-num">{lev.id}</div>
+                                            <div className="level-name">{lev.name}</div>
+                                            <div className={`level-stars ${stars === 0 ? 'empty' : ''}`}>
+                                                {'★'.repeat(stars)}{'☆'.repeat(3 - stars)}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <button className="menu-button secondary" onClick={() => setScreen('menu')}>
+                                BACK TO MENU
+                            </button>
                         </div>
                     </div>
                 );
@@ -1298,15 +1431,26 @@
                     <div className="game-screen">
                         <div className="game-hud">
                             <div className="hud-left">
-                                <div className="stat-pill" data-score-type="apples">
-                                    <span className="label">SCORE</span>
-                                    <span>{Number(foodEaten)}</span>
-                                </div>
-                                <div className="stat-pill">
-                                    <span className="label">HIGH SCORE</span>
-                                    {getHighScore(settings.gameMode, settings.difficulty)}
-                                </div>
-                                {settings.gameMode === 'survival' && (
+                                {levelId ? (
+                                    <>
+                                        <div className="stat-pill" data-score-type="apples">
+                                            <span className="label">LEVEL {levelId}</span>
+                                            <span>{Number(foodEaten)} / {LEVELS[levelId - 1].targetApples}</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="stat-pill" data-score-type="apples">
+                                            <span className="label">SCORE</span>
+                                            <span>{Number(foodEaten)}</span>
+                                        </div>
+                                        <div className="stat-pill">
+                                            <span className="label">HIGH SCORE</span>
+                                            {getHighScore(settings.gameMode, settings.difficulty)}
+                                        </div>
+                                    </>
+                                )}
+                                {!levelId && settings.gameMode === 'survival' && (
                                     <div className="stat-pill">
                                         <span className="label">TIME</span>
                                         {timer}s
@@ -1340,6 +1484,31 @@
                             </div>
                         )}
 
+                        {screen === 'levelComplete' && (
+                            <div className="overlay">
+                                <div className="overlay-title">LEVEL {levelId} COMPLETE!</div>
+                                <div className="level-complete-stars">
+                                    {'★'.repeat(levelStars[levelId] || 0)}{'☆'.repeat(3 - (levelStars[levelId] || 0))}
+                                </div>
+                                <div className="overlay-score" style={{ marginTop: 0 }}>
+                                    TIME <span>{levelCompleteTime.toFixed(1)}s</span>
+                                </div>
+                                <div className="overlay-buttons">
+                                    {levelId < LEVELS.length && (
+                                        <button className="overlay-button" onClick={() => startLevel(levelId + 1)}>
+                                            NEXT LEVEL
+                                        </button>
+                                    )}
+                                    <button className="overlay-button secondary" onClick={() => setScreen('levels')}>
+                                        LEVEL SELECT
+                                    </button>
+                                    <button className="overlay-button secondary" onClick={() => { setLevelId(null); setScreen('menu'); }}>
+                                        MENU
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {screen === 'gameOver' && (
                             <div className="overlay">
                                 <div className="overlay-title">GAME OVER</div>
@@ -1360,14 +1529,14 @@
                                 <div className="overlay-buttons">
                                     <button 
                                         className="overlay-button" 
-                                        onClick={startGame}
+                                        onClick={levelId ? () => startLevel(levelId) : startGame}
                                         disabled={submittingScore}
                                     >
                                         PLAY AGAIN
                                     </button>
                                     <button 
                                         className="overlay-button secondary" 
-                                        onClick={() => setScreen('menu')}
+                                        onClick={() => { setLevelId(null); setScreen('menu'); }}
                                         disabled={submittingScore}
                                     >
                                         MENU
