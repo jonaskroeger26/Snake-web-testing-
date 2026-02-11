@@ -609,9 +609,11 @@
             const gameLoopRef = useRef(null);
             const directionRef = useRef(INITIAL_DIRECTION);
             const snakeRef = useRef(INITIAL_SNAKE);
+            const lastHeadRef = useRef({ x: 10, y: 10 });
+            const lastTickRef = useRef(Date.now());
             const gameSessionRef = useRef({ gameMode: 'classic', difficulty: 'medium' });
 
-            const GAME_SPEEDS = { easy: 150, medium: 120, hard: 85, turbo: 17 };
+            const GAME_SPEEDS = { easy: 150, medium: 120, hard: 85, turbo: 60 };
 
             // Calculate cell size based on viewport
             useEffect(() => {
@@ -933,6 +935,8 @@
                 gameSessionRef.current = { gameMode: settings.gameMode, difficulty: settings.difficulty };
                 setSnake(INITIAL_SNAKE);
                 snakeRef.current = INITIAL_SNAKE;
+                lastHeadRef.current = { x: INITIAL_SNAKE[0].x, y: INITIAL_SNAKE[0].y };
+                lastTickRef.current = Date.now();
                 setDirection(INITIAL_DIRECTION);
                 directionRef.current = INITIAL_DIRECTION;
                 setFood(generateFood());
@@ -957,6 +961,8 @@
                 levelStartTimeRef.current = Date.now();
                 setSnake(INITIAL_SNAKE);
                 snakeRef.current = INITIAL_SNAKE;
+                lastHeadRef.current = { x: INITIAL_SNAKE[0].x, y: INITIAL_SNAKE[0].y };
+                lastTickRef.current = Date.now();
                 setDirection(INITIAL_DIRECTION);
                 directionRef.current = INITIAL_DIRECTION;
                 setObstacles(level.obstacles || []);
@@ -1099,6 +1105,8 @@
                     newSnake.pop();
                 }
 
+                lastHeadRef.current = { x: body[0].x, y: body[0].y };
+                lastTickRef.current = Date.now();
                 snakeRef.current = newSnake;
                 setSnake(newSnake);
             }, [food, checkCollision, foodEaten, generateFood, settings.sound, settings.vibration, settings.gameMode, levelId]);
@@ -1191,29 +1199,56 @@
                 const canvas = canvasRef.current;
                 if (!canvas) return;
                 const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                let interval = GAME_SPEEDS[settings.difficulty];
+                if (settings.gameMode === 'speed' && speedBoost) interval = Math.max(interval - 50, 50);
 
-                if (obstacles.length > 0) {
-                    ctx.fillStyle = '#1a1a1a';
-                    obstacles.forEach(obs => {
-                        ctx.fillRect(obs.x * cellSize, obs.y * cellSize, cellSize - 1, cellSize - 1);
-                    });
+                function draw() {
+                    const body = snakeRef.current;
+                    if (!body || body.length === 0) return;
+                    if (!lastHeadRef.current) lastHeadRef.current = { x: body[0].x, y: body[0].y };
+                    const now = Date.now();
+                    const alpha = Math.min(1, (now - lastTickRef.current) / interval);
+
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    if (obstacles.length > 0) {
+                        ctx.fillStyle = '#1a1a1a';
+                        obstacles.forEach(function(obs) {
+                            ctx.fillRect(obs.x * cellSize, obs.y * cellSize, cellSize - 1, cellSize - 1);
+                        });
+                    }
+
+                    const snakeColor = SNAKE_SKINS[settings.snakeColor] || SNAKE_SKINS.green;
+                    ctx.fillStyle = speedBoost ? '#FFD700' : snakeColor;
+                    for (var i = 0; i < body.length; i++) {
+                        var px, py;
+                        if (i === 0) {
+                            px = (lastHeadRef.current.x + (body[0].x - lastHeadRef.current.x) * alpha) * cellSize;
+                            py = (lastHeadRef.current.y + (body[0].y - lastHeadRef.current.y) * alpha) * cellSize;
+                        } else {
+                            px = body[i].x * cellSize;
+                            py = body[i].y * cellSize;
+                        }
+                        ctx.fillRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+                    }
+
+                    const foodCenterX = food.x * cellSize + cellSize / 2;
+                    const foodCenterY = food.y * cellSize + cellSize / 2;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = (cellSize - 2) + 'px sans-serif';
+                    ctx.fillText('🍎', foodCenterX, foodCenterY);
                 }
 
-                const snakeColor = SNAKE_SKINS[settings.snakeColor] || SNAKE_SKINS.green;
-                ctx.fillStyle = speedBoost ? '#FFD700' : snakeColor;
-                snake.forEach((segment) => {
-                    ctx.fillRect(segment.x * cellSize + 1, segment.y * cellSize + 1, cellSize - 2, cellSize - 2);
-                });
-
-                const foodCenterX = food.x * cellSize + cellSize / 2;
-                const foodCenterY = food.y * cellSize + cellSize / 2;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.font = `${cellSize - 2}px sans-serif`;
-                ctx.fillText('🍎', foodCenterX, foodCenterY);
-            }, [snake, food, obstacles, speedBoost, cellSize, settings.snakeColor]);
+                var rafId;
+                function loop() {
+                    draw();
+                    rafId = requestAnimationFrame(loop);
+                }
+                rafId = requestAnimationFrame(loop);
+                return function() { cancelAnimationFrame(rafId); };
+            }, [snake, food, obstacles, speedBoost, cellSize, settings.snakeColor, settings.difficulty, settings.gameMode]);
 
             if (screen === 'menu') {
                 return (
