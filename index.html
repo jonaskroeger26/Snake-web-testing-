@@ -467,6 +467,12 @@
         .shop-item .shop-item-price { color: var(--text-muted); font-size: 0.95em; }
         .shop-item button.menu-button { margin: 0; padding: 10px 20px; font-size: 0.95em; }
         .shop-item button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .shop-skin-preview-wrap {
+            flex-shrink: 0;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
         .levels-container {
             width: 100%;
             max-width: 520px;
@@ -537,12 +543,62 @@
             green: '#14F195',
             indigo: '#6366F1',
             violet: '#8B5CF6',
-            leopard: '#C19A6B'
+            leopard: '#C19A6B',
+            rainbow: '#FF0000'
         };
+        const ROYGBIV = ['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#8B00FF'];
         const SNAKE_SKIN_IDS = ['blue', 'orange', 'yellow', 'green', 'indigo', 'violet'];
-        const SHOP_SKINS = [{ id: 'leopard', price: 100, name: 'Leopard' }];
+        const SHOP_SKINS = [{ id: 'leopard', price: 100, name: 'Leopard' }, { id: 'rainbow', price: 200, name: 'Rainbow' }];
         const APPLE_COINS_KEY = 'snakeAppleCoins';
         const UNLOCKED_SKINS_KEY = 'snakeUnlockedSkins';
+
+        function ShopSnakePreview({ skinId }) {
+            const canvasRef = React.useRef(null);
+            React.useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const cellSize = 22;
+                const segCount = 6;
+                const pad = 14;
+                const w = segCount * cellSize + pad * 2;
+                const h = cellSize + pad * 2;
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = w * dpr;
+                canvas.height = h * dpr;
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+                const ctx = canvas.getContext('2d');
+                ctx.scale(dpr, dpr);
+                const bg = document.documentElement.getAttribute('data-theme') === 'light' ? '#e0e0e0' : '#1a1a1a';
+                ctx.fillStyle = bg;
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(0, 0, w, h, 10);
+                else { ctx.rect(0, 0, w, h); }
+                ctx.fill();
+                const isRainbow = skinId === 'rainbow';
+                for (let i = 0; i < segCount; i++) {
+                    const color = isRainbow ? ROYGBIV[i % 7] : (SNAKE_SKINS[skinId] || '#14F195');
+                    ctx.fillStyle = color;
+                    const x = pad + i * cellSize + 1;
+                    const y = pad + 1;
+                    ctx.fillRect(x, y, cellSize - 2, cellSize - 2);
+                }
+                if (skinId === 'leopard') {
+                    ctx.fillStyle = '#4a3728';
+                    const spotSize = 3;
+                    const spots = [
+                        [pad + 1 * cellSize + 5, pad + 5],
+                        [pad + 1 * cellSize + 14, pad + 14],
+                        [pad + 2 * cellSize + 7, pad + 10],
+                        [pad + 3 * cellSize + 11, pad + 8],
+                        [pad + 4 * cellSize + 6, pad + 12],
+                        [pad + 5 * cellSize + 9, pad + 6]
+                    ];
+                    spots.forEach(([sx, sy]) => ctx.fillRect(sx, sy, spotSize, spotSize));
+                }
+            }, [skinId]);
+            return <canvas ref={canvasRef} style={{ borderRadius: 10, display: 'block' }} />;
+        }
 
         // Level mode: routing puzzles and distinct shapes, not just more blocks.
         // Each level has a clear idea: one gap, S-path, thread the needle, figure-8, etc.
@@ -715,7 +771,10 @@
             const [appleCoins, setAppleCoins] = useState(() => {
                 try {
                     const raw = localStorage.getItem(APPLE_COINS_KEY);
-                    return raw ? Math.max(0, parseInt(raw, 10)) : 0;
+                    const parsed = raw !== null && raw !== '' ? parseInt(raw, 10) : NaN;
+                    const saved = !isNaN(parsed) && parsed >= 0 ? parsed : 0;
+                    const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+                    return isLocal ? Math.max(500, saved) : saved;
                 } catch (_) { return 0; }
             });
             const [unlockedSkins, setUnlockedSkins] = useState(() => {
@@ -1368,7 +1427,6 @@
                     }
 
                     const snakeColor = SNAKE_SKINS[settings.snakeColor] || SNAKE_SKINS.green;
-                    ctx.fillStyle = speedBoost ? '#FFD700' : snakeColor;
                     const isPortal = settings.gameMode === 'portal' && !levelId;
                     const wrap = (v, size) => ((v % size) + size) % size;
                     const shortestDelta = (from, to, size) => {
@@ -1397,7 +1455,26 @@
                             py = body[i].y * cellSize;
                         }
                         var x = Math.floor(px) + 1, y = Math.floor(py) + 1;
+                        const segColor = speedBoost ? '#FFD700' : (settings.snakeColor === 'rainbow' ? ROYGBIV[i % 7] : snakeColor);
+                        ctx.fillStyle = segColor;
                         ctx.fillRect(x, y, cellSize - 2, cellSize - 2);
+                        if (settings.snakeColor === 'leopard' && !speedBoost) {
+                            ctx.fillStyle = '#4a3728';
+                            const segW = cellSize - 2;
+                            const spotSize = Math.max(2, Math.floor(segW / 7));
+                            const r = (i, a, b) => ((i * 7 + a) * 11 + b) % 100;
+                            if (i === 0) {
+                                ctx.fillRect(x + (r(i, 1, 2) % (segW - spotSize)), y + (r(i, 3, 1) % (segW - spotSize)), spotSize, spotSize);
+                            } else if (i < body.length - 1) {
+                                const n = 1 + (i % 3);
+                                for (let s = 0; s < n; s++) {
+                                    const sx = x + 1 + (r(i, s, 0) % (segW - spotSize - 2));
+                                    const sy = y + 1 + (r(i, s, 5) % (segW - spotSize - 2));
+                                    ctx.fillRect(sx, sy, spotSize, spotSize);
+                                }
+                            }
+                            ctx.fillStyle = snakeColor;
+                        }
                     }
 
                     const foodCenterX = food.x * cellSize + cellSize / 2;
@@ -1526,8 +1603,10 @@
                                 const canBuy = !owned && appleCoins >= item.price;
                                 return (
                                     <div key={item.id} className={`shop-item ${owned ? 'owned' : ''}`}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                            <div className="skin-swatch" style={{ backgroundColor: SNAKE_SKINS[item.id], flexShrink: 0 }} />
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                                            <div className="shop-skin-preview-wrap" aria-hidden>
+                                                <ShopSnakePreview skinId={item.id} />
+                                            </div>
                                             <div>
                                                 <div className="shop-item-name">{item.name}</div>
                                                 <div className="shop-item-price">{owned ? 'Owned' : `${item.price} apples`}</div>
@@ -1637,7 +1716,7 @@
                                             key={id}
                                             type="button"
                                             className={`skin-swatch ${settings.snakeColor === id ? 'active' : ''}`}
-                                            style={{ backgroundColor: SNAKE_SKINS[id] }}
+                                            style={id === 'rainbow' ? { background: 'linear-gradient(to right, #FF0000, #FF7F00, #FFFF00, #00FF00, #0000FF, #4B0082, #8B00FF)' } : { backgroundColor: SNAKE_SKINS[id] }}
                                             title={id}
                                             onClick={() => setSettings({...settings, snakeColor: id})}
                                         />
