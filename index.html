@@ -410,6 +410,45 @@
             font-size: 0.9em;
             margin-top: 15px;
         }
+        .play-select-container {
+            width: 100%;
+            max-width: 520px;
+            padding: 24px;
+        }
+        .play-select-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .play-select-title { font-size: 1.8em; font-weight: 700; }
+        .play-select-difficulty {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .play-select-difficulty label { font-size: 0.9em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        .mode-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .mode-row:hover {
+            border-color: var(--accent);
+            background: var(--bg-tertiary);
+        }
+        .mode-row .mode-name { font-weight: 600; font-size: 1.1em; }
+        .mode-row .mode-desc { font-size: 0.8em; color: var(--text-muted); margin-top: 2px; }
+        .mode-row select { margin-left: 12px; }
         .levels-container {
             width: 100%;
             max-width: 520px;
@@ -980,9 +1019,14 @@
                 vibrate(10);
             };
 
-            const startGame = () => {
+            const startGame = (overrides) => {
+                const mode = overrides?.gameMode ?? settings.gameMode;
+                const difficulty = overrides?.difficulty ?? settings.difficulty;
+                if (overrides?.gameMode != null || overrides?.difficulty != null) {
+                    setSettings(prev => ({ ...prev, gameMode: mode, difficulty }));
+                }
                 setLevelId(null);
-                gameSessionRef.current = { gameMode: settings.gameMode, difficulty: settings.difficulty };
+                gameSessionRef.current = { gameMode: mode, difficulty };
                 setSnake(INITIAL_SNAKE);
                 snakeRef.current = INITIAL_SNAKE;
                 lastHeadRef.current = { x: INITIAL_SNAKE[0].x, y: INITIAL_SNAKE[0].y };
@@ -994,7 +1038,7 @@
                 setSpeedBoost(false);
                 setTimer(60);
                 
-                if (settings.gameMode === 'walls') {
+                if (mode === 'walls') {
                     setObstacles(generateObstacles());
                 } else {
                     setObstacles([]);
@@ -1288,16 +1332,35 @@
 
                     const snakeColor = SNAKE_SKINS[settings.snakeColor] || SNAKE_SKINS.green;
                     ctx.fillStyle = speedBoost ? '#FFD700' : snakeColor;
+                    const isPortal = settings.gameMode === 'portal' && !levelId;
+                    const wrap = (v, size) => ((v % size) + size) % size;
+                    const shortestDelta = (from, to, size) => {
+                        let d = to - from;
+                        if (d > size / 2) d -= size;
+                        else if (d < -size / 2) d += size;
+                        return d;
+                    };
                     for (var i = 0; i < body.length; i++) {
                         var px, py;
                         if (i === 0) {
-                            px = (lastHeadRef.current.x + (body[0].x - lastHeadRef.current.x) * alpha) * cellSize;
-                            py = (lastHeadRef.current.y + (body[0].y - lastHeadRef.current.y) * alpha) * cellSize;
+                            var hx, hy;
+                            if (isPortal) {
+                                var dx = shortestDelta(lastHeadRef.current.x, body[0].x, GRID_SIZE);
+                                var dy = shortestDelta(lastHeadRef.current.y, body[0].y, GRID_SIZE);
+                                hx = wrap(lastHeadRef.current.x + dx * alpha, GRID_SIZE);
+                                hy = wrap(lastHeadRef.current.y + dy * alpha, GRID_SIZE);
+                            } else {
+                                hx = lastHeadRef.current.x + (body[0].x - lastHeadRef.current.x) * alpha;
+                                hy = lastHeadRef.current.y + (body[0].y - lastHeadRef.current.y) * alpha;
+                            }
+                            px = hx * cellSize;
+                            py = hy * cellSize;
                         } else {
                             px = body[i].x * cellSize;
                             py = body[i].y * cellSize;
                         }
-                        ctx.fillRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+                        var x = Math.floor(px) + 1, y = Math.floor(py) + 1;
+                        ctx.fillRect(x, y, cellSize - 2, cellSize - 2);
                     }
 
                     const foodCenterX = food.x * cellSize + cellSize / 2;
@@ -1315,7 +1378,7 @@
                 }
                 rafId = requestAnimationFrame(loop);
                 return function() { cancelAnimationFrame(rafId); };
-            }, [snake, food, obstacles, speedBoost, cellSize, settings.snakeColor, settings.difficulty, settings.gameMode, settings.theme]);
+            }, [snake, food, obstacles, speedBoost, cellSize, settings.snakeColor, settings.difficulty, settings.gameMode, settings.theme, levelId]);
 
             if (screen === 'menu') {
                 return (
@@ -1326,8 +1389,8 @@
                             </div>
                             <div className="tagline">SOLANA SEEKER</div>
                             
-                            <button className="menu-button" onClick={startGame}>
-                                START GAME
+                            <button className="menu-button" onClick={() => setScreen('playSelect')}>
+                                PLAY
                             </button>
                             <button className="menu-button secondary" onClick={() => setScreen('levels')}>
                                 LEVELS
@@ -1357,6 +1420,54 @@
                                     {snsName || '...loading'}
                                 </div>
                             )}
+                        </div>
+                    </div>
+                );
+            }
+
+            const GAME_MODES = [
+                { id: 'classic', name: 'Classic', desc: 'No walls, wrap or die' },
+                { id: 'walls', name: 'Walls', desc: 'Avoid obstacles' },
+                { id: 'portal', name: 'Portal', desc: 'Wrap around edges' },
+                { id: 'speed', name: 'Speed', desc: 'Collect orbs for boost' },
+                { id: 'survival', name: 'Survival', desc: '60s timer' }
+            ];
+
+            if (screen === 'playSelect') {
+                return (
+                    <div className="fullscreen">
+                        <div className="play-select-container">
+                            <div className="play-select-header">
+                                <div className="play-select-title">Choose game mode</div>
+                                <div className="play-select-difficulty">
+                                    <label>Difficulty</label>
+                                    <select
+                                        className="select-box"
+                                        value={settings.difficulty}
+                                        onChange={(e) => setSettings({ ...settings, difficulty: e.target.value })}
+                                    >
+                                        <option value="easy">Easy</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="hard">Hard</option>
+                                        <option value="turbo">Turbo</option>
+                                    </select>
+                                </div>
+                            </div>
+                            {GAME_MODES.map((m) => (
+                                <div
+                                    key={m.id}
+                                    className="mode-row"
+                                    onClick={() => startGame({ gameMode: m.id, difficulty: settings.difficulty })}
+                                >
+                                    <div>
+                                        <div className="mode-name">{m.name}</div>
+                                        <div className="mode-desc">{m.desc}</div>
+                                    </div>
+                                </div>
+                            ))}
+                            <button className="menu-button secondary" style={{ marginTop: 24 }} onClick={() => setScreen('menu')}>
+                                BACK
+                            </button>
                         </div>
                     </div>
                 );
@@ -1431,35 +1542,6 @@
                                 >
                                     <div className="toggle-knob"></div>
                                 </div>
-                            </div>
-
-                            <div className="setting-row">
-                                <div className="setting-name">Difficulty</div>
-                                <select 
-                                    className="select-box"
-                                    value={settings.difficulty}
-                                    onChange={(e) => setSettings({...settings, difficulty: e.target.value})}
-                                >
-                                    <option value="easy">Easy</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="hard">Hard</option>
-                                    <option value="turbo">Turbo</option>
-                                </select>
-                            </div>
-
-                            <div className="setting-row">
-                                <div className="setting-name">Game Mode</div>
-                                <select 
-                                    className="select-box"
-                                    value={settings.gameMode}
-                                    onChange={(e) => setSettings({...settings, gameMode: e.target.value})}
-                                >
-                                    <option value="classic">Classic</option>
-                                    <option value="walls">Walls</option>
-                                    <option value="portal">Portal</option>
-                                    <option value="speed">Speed</option>
-                                    <option value="survival">Survival</option>
-                                </select>
                             </div>
 
                             <div className="setting-row">
