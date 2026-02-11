@@ -611,7 +611,7 @@
             const snakeRef = useRef(INITIAL_SNAKE);
             const gameSessionRef = useRef({ gameMode: 'classic', difficulty: 'medium' });
 
-            const GAME_SPEEDS = { easy: 200, medium: 150, hard: 100 };
+            const GAME_SPEEDS = { easy: 150, medium: 120, hard: 85, turbo: 60 };
 
             // Calculate cell size based on viewport
             useEffect(() => {
@@ -1329,6 +1329,7 @@
                                     <option value="easy">Easy</option>
                                     <option value="medium">Medium</option>
                                     <option value="hard">Hard</option>
+                                    <option value="turbo">Turbo</option>
                                 </select>
                             </div>
 
@@ -1403,6 +1404,7 @@
                                     <option value="easy">Easy</option>
                                     <option value="medium">Medium</option>
                                     <option value="hard">Hard</option>
+                                    <option value="turbo">Turbo</option>
                                 </select>
                             </div>
                             
