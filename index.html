@@ -449,6 +449,24 @@
         .mode-row .mode-name { font-weight: 600; font-size: 1.1em; }
         .mode-row .mode-desc { font-size: 0.8em; color: var(--text-muted); margin-top: 2px; }
         .mode-row select { margin-left: 12px; }
+        .shop-container { width: 100%; max-width: 480px; padding: 24px; }
+        .shop-title { font-size: 1.8em; font-weight: 700; margin-bottom: 8px; }
+        .shop-balance { font-size: 1.2em; color: var(--accent); margin-bottom: 24px; }
+        .shop-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+        }
+        .shop-item.owned { border-color: var(--accent); opacity: 0.9; }
+        .shop-item .shop-item-name { font-weight: 600; }
+        .shop-item .shop-item-price { color: var(--text-muted); font-size: 0.95em; }
+        .shop-item button.menu-button { margin: 0; padding: 10px 20px; font-size: 0.95em; }
+        .shop-item button:disabled { opacity: 0.5; cursor: not-allowed; }
         .levels-container {
             width: 100%;
             max-width: 520px;
@@ -518,9 +536,13 @@
             yellow: '#EAB308',
             green: '#14F195',
             indigo: '#6366F1',
-            violet: '#8B5CF6'
+            violet: '#8B5CF6',
+            leopard: '#C19A6B'
         };
-        const SNAKE_SKIN_IDS = Object.keys(SNAKE_SKINS);
+        const SNAKE_SKIN_IDS = ['blue', 'orange', 'yellow', 'green', 'indigo', 'violet'];
+        const SHOP_SKINS = [{ id: 'leopard', price: 100, name: 'Leopard' }];
+        const APPLE_COINS_KEY = 'snakeAppleCoins';
+        const UNLOCKED_SKINS_KEY = 'snakeUnlockedSkins';
 
         // Level mode: routing puzzles and distinct shapes, not just more blocks.
         // Each level has a clear idea: one gap, S-path, thread the needle, figure-8, etc.
@@ -690,6 +712,20 @@
                     return raw ? JSON.parse(raw) : {};
                 } catch (_) { return {}; }
             });
+            const [appleCoins, setAppleCoins] = useState(() => {
+                try {
+                    const raw = localStorage.getItem(APPLE_COINS_KEY);
+                    return raw ? Math.max(0, parseInt(raw, 10)) : 0;
+                } catch (_) { return 0; }
+            });
+            const [unlockedSkins, setUnlockedSkins] = useState(() => {
+                try {
+                    const raw = localStorage.getItem(UNLOCKED_SKINS_KEY);
+                    return raw ? JSON.parse(raw) : [];
+                } catch (_) { return []; }
+            });
+            useEffect(() => { try { localStorage.setItem(APPLE_COINS_KEY, String(appleCoins)); } catch (_) {} }, [appleCoins]);
+            useEffect(() => { try { localStorage.setItem(UNLOCKED_SKINS_KEY, JSON.stringify(unlockedSkins)); } catch (_) {} }, [unlockedSkins]);
             const [levelId, setLevelId] = useState(null);
             const [levelCompleteTime, setLevelCompleteTime] = useState(0);
             const levelStartTimeRef = useRef(0);
@@ -1175,6 +1211,7 @@
                 if (head.x === food.x && head.y === food.y) {
                     const newCount = foodEaten + 1;
                     setFoodEaten(f => f + 1);
+                    setAppleCoins(c => c + 1);
                     setFood(generateFood());
                     if (settings.sound) playSound(800, 0.1, 0.2);
                     vibrate(50);
@@ -1395,6 +1432,9 @@
                             <button className="menu-button secondary" onClick={() => setScreen('levels')}>
                                 LEVELS
                             </button>
+                            <button className="menu-button secondary" onClick={() => setScreen('shop')}>
+                                SHOP
+                            </button>
                             <button className="menu-button secondary" onClick={() => setScreen('settings')}>
                                 SETTINGS
                             </button>
@@ -1464,6 +1504,52 @@
                                     </div>
                                 </div>
                             ))}
+                            <button className="menu-button secondary" style={{ marginTop: 24 }} onClick={() => setScreen('menu')}>
+                                BACK
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (screen === 'shop') {
+                return (
+                    <div className="fullscreen">
+                        <div className="shop-container">
+                            <div className="shop-title">SHOP</div>
+                            <div className="shop-balance">🍎 {appleCoins} apples</div>
+                            <p style={{ fontSize: '0.9em', color: 'var(--text-muted)', marginBottom: 20 }}>
+                                Earn 1 apple per fruit in any game. Spend apples to unlock skins.
+                            </p>
+                            {SHOP_SKINS.map((item) => {
+                                const owned = unlockedSkins.includes(item.id);
+                                const canBuy = !owned && appleCoins >= item.price;
+                                return (
+                                    <div key={item.id} className={`shop-item ${owned ? 'owned' : ''}`}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <div className="skin-swatch" style={{ backgroundColor: SNAKE_SKINS[item.id], flexShrink: 0 }} />
+                                            <div>
+                                                <div className="shop-item-name">{item.name}</div>
+                                                <div className="shop-item-price">{owned ? 'Owned' : `${item.price} apples`}</div>
+                                            </div>
+                                        </div>
+                                        {!owned && (
+                                            <button
+                                                className="menu-button"
+                                                disabled={!canBuy}
+                                                onClick={() => {
+                                                    if (appleCoins >= item.price) {
+                                                        setAppleCoins(c => c - item.price);
+                                                        setUnlockedSkins(prev => [...prev, item.id]);
+                                                    }
+                                                }}
+                                            >
+                                                Buy
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
                             <button className="menu-button secondary" style={{ marginTop: 24 }} onClick={() => setScreen('menu')}>
                                 BACK
                             </button>
@@ -1546,7 +1632,7 @@
                             <div className="setting-row">
                                 <div className="setting-name">Snake color</div>
                                 <div className="skin-swatches">
-                                    {SNAKE_SKIN_IDS.map((id) => (
+                                    {[...SNAKE_SKIN_IDS, ...unlockedSkins].filter((id, i, a) => a.indexOf(id) === i).map((id) => (
                                         <button
                                             key={id}
                                             type="button"
